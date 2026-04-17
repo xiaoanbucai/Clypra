@@ -325,13 +325,16 @@ async fn extract_frame_at_time(
         "pipe:1", // Output to stdout
     ]);
 
-    // Spawn FFmpeg with 5-second timeout
+    // Log the command for debugging
+    eprintln!("[FFmpeg] Extracting frame at {}s from {}", time_secs, input_path);
+
+    // Spawn FFmpeg with 15-second timeout (increased from 5s for larger files)
     let ffmpeg_result = timeout(
-        Duration::from_secs(5),
+        Duration::from_secs(15),
         Command::new("ffmpeg")
             .args(&ffmpeg_args)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
             .output(),
     )
@@ -341,15 +344,23 @@ async fn extract_frame_at_time(
         Ok(Ok(output)) => {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("[FFmpeg] Error: {}", stderr);
                 return Err(format!("FFmpeg failed: {}", stderr));
             }
 
             // Encode PNG bytes to base64 data URL
             let base64_data = BASE64.encode(&output.stdout);
+            eprintln!("[FFmpeg] Success: extracted {} bytes", output.stdout.len());
             Ok(format!("data:image/png;base64,{}", base64_data))
         }
-        Ok(Err(e)) => Err(format!("Failed to spawn FFmpeg: {}", e)),
-        Err(_) => Err("Frame extraction timeout (5s exceeded)".into()),
+        Ok(Err(e)) => {
+            eprintln!("[FFmpeg] Failed to spawn: {}", e);
+            Err(format!("Failed to spawn FFmpeg: {}", e))
+        }
+        Err(_) => {
+            eprintln!("[FFmpeg] Timeout after 15s for {}", input_path);
+            Err("Frame extraction timeout (15s exceeded) - file may be too large or codec not supported".into())
+        }
     }
 }
 
