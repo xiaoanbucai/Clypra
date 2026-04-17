@@ -317,7 +317,8 @@ const CanvasRendererComponent: React.FC<CanvasRendererProps> = ({ baseWidth, bas
 
   /**
    * Start RAF loop for playback - uses video elements for smooth playback
-   * Optimized: only updates timeline every 3rd frame to reduce React re-renders
+   * Optimized: only updates timeline every 100ms (10fps) to reduce React re-renders
+   * Canvas renders at 60fps, timeline updates at 10fps for performance
    */
   const startRAFLoop = () => {
     if (rafIdRef.current) {
@@ -334,8 +335,8 @@ const CanvasRendererComponent: React.FC<CanvasRendererProps> = ({ baseWidth, bas
     }
 
     let lastTime = performance.now();
-    let frameCount = 0;
     let lastPlayheadUpdate = 0;
+    let frameSkipCounter = 0;
 
     const loop = () => {
       const now = performance.now();
@@ -363,15 +364,19 @@ const CanvasRendererComponent: React.FC<CanvasRendererProps> = ({ baseWidth, bas
         return;
       }
 
-      // Update playhead only every ~50ms (20fps) to reduce React re-renders
-      // This keeps UI responsive while video plays smoothly at 60fps
-      if (now - lastPlayheadUpdate > 50) {
-        useTimelineStore.getState().setPlayhead(currentTime, false); // Don't capture history during playback
+      // Update playhead only every ~100ms (10fps) to reduce React re-renders
+      // This is crucial - too frequent updates cause audio/video jank
+      if (now - lastPlayheadUpdate > 100) {
+        useTimelineStore.getState().setPlayhead(currentTime, false);
         lastPlayheadUpdate = now;
       }
 
-      // Render video frames to canvas (smooth, not FFmpeg)
-      renderVideoFrames();
+      // Render video frames every frame (60fps) for smooth playback
+      // Skip every 2nd frame during playback to reduce CPU load (30fps canvas)
+      frameSkipCounter++;
+      if (frameSkipCounter % 2 === 0) {
+        renderVideoFrames();
+      }
 
       rafIdRef.current = requestAnimationFrame(loop);
     };
