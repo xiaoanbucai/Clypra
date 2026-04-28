@@ -1,37 +1,38 @@
-import React, { useState, useEffect } from 'react'
-import { LaunchScreen } from './components/screens/LaunchScreen'
-import { EditorScreen } from './components/screens/EditorScreen'
-import { useProjectStore } from './store/projectStore'
-import type { Project, AspectRatio } from './types'
+import React, { useState, useEffect } from "react";
+import { LaunchScreen } from "./components/screens/LaunchScreen";
+import { EditorScreen } from "./components/screens/EditorScreen";
+import { TooltipProvider } from "./components/ui/Tooltip";
+import { useProjectStore } from "./store/projectStore";
+import type { Project, AspectRatio } from "./types";
 
 const App = () => {
-  const { project, createProject, loadProject, setRecentProjects } = useProjectStore()
-  const [isLoading, setIsLoading] = useState(true)
+  const { project, createProject, loadProject, setRecentProjects } = useProjectStore();
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        const projectsJson: string[] = await invoke('get_recent_projects')
-        const projects = projectsJson.map((json) => JSON.parse(json))
-        setRecentProjects(projects)
+        const { invoke } = await import("@tauri-apps/api/core");
+        const projectsJson: string[] = await invoke("get_recent_projects");
+        const projects = projectsJson.map((json) => JSON.parse(json));
+        setRecentProjects(projects);
       } catch (error) {
-        console.error('Failed to initialize app:', error)
+        console.error("Failed to initialize app:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    initializeApp()
-  }, [setRecentProjects])
+    initializeApp();
+  }, [setRecentProjects]);
 
   const handleCreateProject = (name: string, aspectRatio: AspectRatio, frameRate: 24 | 30 | 60) => {
-    createProject(name, aspectRatio, frameRate)
-  }
+    createProject(name, aspectRatio, frameRate);
+  };
 
   const handleOpenProject = (proj: Project) => {
-    loadProject(proj)
-  }
+    loadProject(proj);
+  };
 
   if (isLoading) {
     return (
@@ -41,14 +42,10 @@ const App = () => {
           <p className="text-text-primary">Loading...</p>
         </div>
       </div>
-    )
+    );
   }
 
-  return project ? (
-    <EditorScreen />
-  ) : (
-    <LaunchScreen onProjectCreate={handleCreateProject} onProjectOpen={handleOpenProject} />
-  )
-}
+  return <TooltipProvider delayDuration={0}>{project ? <EditorScreen /> : <LaunchScreen onProjectCreate={handleCreateProject} onProjectOpen={handleOpenProject} />}</TooltipProvider>;
+};
 
-export default App
+export default App;

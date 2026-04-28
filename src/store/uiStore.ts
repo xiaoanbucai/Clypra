@@ -1,46 +1,53 @@
-import { create } from 'zustand'
+import { create } from "zustand";
 
 interface UIStore {
-  selectedClipId: string | null
-  selectedTrackId: string | null
-  activePanel: 'media' | 'properties'
-  showExportModal: boolean
-  showNewProjectModal: boolean
-  selectClip: (clipId: string | null) => void
-  selectTrack: (trackId: string | null) => void
-  setActivePanel: (panel: 'media' | 'properties') => void
-  toggleExportModal: () => void
-  toggleNewProjectModal: () => void
+  selectedClipId: string | null;
+  selectedTrackId: string | null;
+  previewMediaId: string | null;
+  activePanel: "media" | "properties";
+  showExportModal: boolean;
+  showNewProjectModal: boolean;
+  selectClip: (clipId: string | null) => void;
+  selectTrack: (trackId: string | null) => void;
+  setPreviewMedia: (mediaId: string | null) => void;
+  setActivePanel: (panel: "media" | "properties") => void;
+  toggleExportModal: () => void;
+  toggleNewProjectModal: () => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
   selectedClipId: null,
   selectedTrackId: null,
-  activePanel: 'media',
+  previewMediaId: null,
+  activePanel: "media",
   showExportModal: false,
   showNewProjectModal: false,
 
   selectClip: (clipId) => {
-    set({ selectedClipId: clipId })
+    set({ selectedClipId: clipId });
   },
 
   selectTrack: (trackId) => {
-    set({ selectedTrackId: trackId })
+    set({ selectedTrackId: trackId });
+  },
+
+  setPreviewMedia: (mediaId) => {
+    set({ previewMediaId: mediaId });
   },
 
   setActivePanel: (panel) => {
-    set({ activePanel: panel })
+    set({ activePanel: panel });
   },
 
   toggleExportModal: () => {
     set((state) => ({
       showExportModal: !state.showExportModal,
-    }))
+    }));
   },
 
   toggleNewProjectModal: () => {
     set((state) => ({
       showNewProjectModal: !state.showNewProjectModal,
-    }))
+    }));
   },
-}))
+}));
