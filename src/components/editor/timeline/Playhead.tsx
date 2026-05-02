@@ -17,6 +17,7 @@ export const Playhead: React.FC<PlayheadProps> = ({ pixelsPerSecond, duration })
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault(); // Prevent text selection
       const parent = containerRef.current?.parentElement;
       if (!parent) return;
       const rect = parent.getBoundingClientRect();
@@ -27,7 +28,13 @@ export const Playhead: React.FC<PlayheadProps> = ({ pixelsPerSecond, duration })
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      document.body.style.cursor = ""; // Reset cursor
+      document.body.style.userSelect = ""; // Re-enable text selection
     };
+
+    // Prevent text selection during drag
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
@@ -35,24 +42,31 @@ export const Playhead: React.FC<PlayheadProps> = ({ pixelsPerSecond, duration })
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, [isDragging, duration, pixelsPerSecond, seek]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent text selection
+    setIsDragging(true);
+  };
 
   return (
     <div
       ref={containerRef}
       data-playhead
-      className="absolute z-80 inset-y-0 cursor-ew-resize group"
+      className={`absolute z-80 inset-y-0 select-none ${isDragging ? "cursor-ew-resize" : "cursor-ew-resize hover:cursor-ew-resize"}`}
       style={{
         left: `${left}px`,
         width: "8px", // Wider hit area
         marginLeft: "-3px", // Center the visual line
       }}
-      onMouseDown={() => setIsDragging(true)}
+      onMouseDown={handleMouseDown}
     >
       {/* Visual line */}
       <div
-        className="absolute inset-y-0 left-1/2 -translate-x-1/2"
+        className="absolute inset-y-0 left-1/2 -translate-x-1/2 pointer-events-none"
         style={{
           width: "2px",
           backgroundColor: "#f1f4f8",
@@ -62,7 +76,7 @@ export const Playhead: React.FC<PlayheadProps> = ({ pixelsPerSecond, duration })
 
       {/* Triangle handle at top */}
       <div
-        className="absolute w-4 h-3 rounded-[2px] cursor-grab active:cursor-grabbing"
+        className="absolute w-4 h-3 rounded-[2px] pointer-events-none"
         style={{
           left: "50%",
           transform: "translateX(-50%)",
