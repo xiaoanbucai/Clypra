@@ -218,7 +218,7 @@ export const Timeline: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         <TrackList />
 
-        <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin px-1 relative">
+        <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-x-auto overflow-y-auto scrollbar-thin px-1 relative">
           {/* Visual feedback overlay when dragging over timeline */}
           <div className={`absolute inset-0 duration-300 transition-colors pointer-events-none ${isDraggingOver ? "bg-surface-raised/80" : ""}`} style={{ zIndex: isDraggingOver ? 10 : -1 }} />
 
@@ -233,18 +233,18 @@ export const Timeline: React.FC = () => {
             <div
               style={{
                 width: `${contentWidth}px`,
-                minHeight: `${totalHeight + 32}px`,
+                minHeight: "100%",
               }}
-              className="bg-[#1b1f25]"
+              className="bg-[#1b1f25] relative flex flex-col justify-end"
             >
               <TimelineRuler pixelsPerSecond={pixelsPerSecond} scrollLeft={scrollLeft} onSeek={seek} />
 
-              <div style={{ position: "relative", height: totalHeight }} className="bg-[#1b1f25]">
+              <div className="relative flex-1 flex flex-col justify-end min-h-0">
                 {tracks.map((track) => (
                   <Track key={track.id} track={track} pixelsPerSecond={pixelsPerSecond} clips={clips} />
                 ))}
 
-                <Playhead pixelsPerSecond={pixelsPerSecond} duration={duration} trackHeight={totalHeight} />
+                <Playhead pixelsPerSecond={pixelsPerSecond} duration={duration} />
               </div>
             </div>
           )}
