@@ -42,24 +42,35 @@ export const Playhead: React.FC<PlayheadProps> = ({ pixelsPerSecond, duration })
     <div
       ref={containerRef}
       data-playhead
-      className="absolute z-80 pointer-events-none inset-y-0"
+      className="absolute z-80 inset-y-0 cursor-ew-resize group"
       style={{
         left: `${left}px`,
-        width: "2px",
-        backgroundColor: "#f1f4f8",
-        boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
+        width: "8px", // Wider hit area
+        marginLeft: "-3px", // Center the visual line
       }}
+      onMouseDown={() => setIsDragging(true)}
     >
+      {/* Visual line */}
       <div
-        className="absolute w-4 h-3 rounded-[2px] pointer-events-auto cursor-grab active:cursor-grabbing"
+        className="absolute inset-y-0 left-1/2 -translate-x-1/2"
         style={{
-          left: "-7px",
+          width: "2px",
+          backgroundColor: "#f1f4f8",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
+        }}
+      />
+
+      {/* Triangle handle at top */}
+      <div
+        className="absolute w-4 h-3 rounded-[2px] cursor-grab active:cursor-grabbing"
+        style={{
+          left: "50%",
+          transform: "translateX(-50%)",
           top: "-5px",
           backgroundColor: "#f1f4f8",
           clipPath: "polygon(0 100%, 50% 0, 100% 100%)",
           boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
         }}
-        onMouseDown={() => setIsDragging(true)}
       />
     </div>
   );
