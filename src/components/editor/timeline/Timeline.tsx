@@ -153,6 +153,7 @@ export const Timeline: React.FC = () => {
 
         // Listen for drag over
         const unlistenHover = await listen<{ position: { x: number; y: number } }>("tauri://drag-over", (event) => {
+          console.log("[Timeline] Drag over event received", event.payload.position);
           if (!containerRef.current) return;
 
           const rect = containerRef.current.getBoundingClientRect();
@@ -160,6 +161,7 @@ export const Timeline: React.FC = () => {
 
           // Check if mouse is over this container
           const isOver = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+          console.log("[Timeline] isOver:", isOver, "rect:", rect, "mouse:", { x, y });
           setIsDraggingOver(isOver);
         });
 
