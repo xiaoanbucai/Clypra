@@ -4,11 +4,8 @@ use base64::Engine;
 use image::ImageEncoder;
 use std::fs;
 
-/// Get video metadata using native FFmpeg decoder (fast, no CLI overhead)
-/// Also supports audio files (returns width=0, height=0 for audio-only)
 #[tauri::command]
 pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
-    // Try to use native decoder to get metadata
     match get_decoder(&path).await {
         Ok(decoder) => {
             let guard = decoder.lock().await;
@@ -19,12 +16,11 @@ pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
             let duration = guard.duration;
             let fps = guard.fps();
             
-            // Swap dimensions for 90° and 270° rotations (portrait videos)
             if rotation == 90 || rotation == 270 {
                 std::mem::swap(&mut width, &mut height);
             }
             
-            drop(guard); // Release lock
+            drop(guard);
             
             let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
@@ -37,7 +33,6 @@ pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
             })
         }
         Err(e) if e.contains("No video stream") => {
-            // Audio-only file - return metadata with width=0, height=0
             let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             let duration = get_audio_duration(&path).await.unwrap_or(0.0);
             
@@ -53,7 +48,6 @@ pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
     }
 }
 
-/// Get audio duration using ffprobe
 async fn get_audio_duration(path: &str) -> Result<f64, String> {
     use std::process::Command;
     
@@ -91,23 +85,19 @@ async fn get_audio_duration(path: &str) -> Result<f64, String> {
     Ok(duration)
 }
 
-/// Extract poster frame using native decoder (fast, no CLI overhead)
 #[tauri::command]
 pub async fn extract_poster_frame(path: String, time: f64) -> Result<String, String> {
     use image::codecs::png::PngEncoder;
     
     eprintln!("[extract_poster_frame] Extracting frame at {}s from {}", time, path);
     
-    // Use native decoder
     let decoder = get_decoder(&path).await?;
     
-    // Decode frame at specified time (90px height for poster)
     let rgba_bytes = {
         let mut guard = decoder.lock().await;
         guard.decode_frame(time, 160, 90)?
     };
     
-    // Encode to PNG
     let mut png_data = Vec::new();
     let encoder = PngEncoder::new(&mut png_data);
     encoder.write_image(&rgba_bytes, 160, 90, image::ExtendedColorType::Rgba8)
@@ -117,14 +107,12 @@ pub async fn extract_poster_frame(path: String, time: f64) -> Result<String, Str
     Ok(format!("data:image/png;base64,{}", encoded))
 }
 
-/// Extract album artwork from audio file (MP3 ID3 tags, etc.)
 #[tauri::command]
 pub async fn extract_audio_artwork(path: String) -> Result<Option<String>, String> {
     use std::process::Command;
     
     eprintln!("[extract_audio_artwork] Extracting artwork from: {}", path);
     
-    // Use ffmpeg to extract embedded artwork
     let output = Command::new("ffmpeg")
         .args(&[
             "-i", &path,
@@ -142,7 +130,6 @@ pub async fn extract_audio_artwork(path: String) -> Result<Option<String>, Strin
         return Ok(None);
     }
     
-    // Encode to base64
     let encoded = base64::engine::general_purpose::STANDARD.encode(&output.stdout);
     let mime_type = "image/jpeg"; // Most audio artwork is JPEG
     

@@ -7,7 +7,8 @@ import { generateSimpleWaveform } from "../lib/audioWaveformGenerator";
 
 export const useMediaImport = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const { addMediaAsset } = useProjectStore();
+  const [toastMessage, setToastMessage] = useState<{ type: "success" | "warning"; message: string } | null>(null);
+  const { addMediaAsset, mediaAssets } = useProjectStore();
 
   const importMedia = async () => {
     try {
@@ -25,9 +26,19 @@ export const useMediaImport = () => {
       if (!selected) return;
 
       const files = Array.isArray(selected) ? selected : [selected];
+      let importedCount = 0;
+      let skippedCount = 0;
 
       for (const path of files) {
         try {
+          // Check if asset already exists
+          const existingAsset = mediaAssets.find((a) => a.path === path);
+          if (existingAsset) {
+            console.log(`[useMediaImport] Asset already imported, skipping: ${path}`);
+            skippedCount++;
+            continue;
+          }
+
           const filename = path.split("/").pop() || "Unknown";
           const type = getMediaType(path);
 
@@ -45,7 +56,7 @@ export const useMediaImport = () => {
               posterFrame = (await invoke("extract_poster_frame_command", {
                 videoPath: path,
                 duration: metadata.duration,
-                dpr: 1.0,
+                dpr: window.devicePixelRatio || 1.0,
               }).catch((err) => {
                 console.error("Failed to extract poster frame:", err);
                 return undefined;
@@ -103,11 +114,30 @@ export const useMediaImport = () => {
               posterFrame: convertFileSrc(path), // Use the image itself as preview
             };
             addMediaAsset(asset);
+            importedCount++;
           }
         } catch (fileError) {
           console.error(`Failed to import ${path}:`, fileError);
           // Continue with next file instead of stopping
         }
+      }
+
+      // Show appropriate toast message
+      if (importedCount > 0 && skippedCount > 0) {
+        setToastMessage({
+          type: "warning",
+          message: `Imported ${importedCount} file(s). ${skippedCount} duplicate(s) skipped.`,
+        });
+      } else if (skippedCount > 0) {
+        setToastMessage({
+          type: "warning",
+          message: `${skippedCount} file(s) already imported.`,
+        });
+      } else if (importedCount > 0) {
+        setToastMessage({
+          type: "success",
+          message: `Successfully imported ${importedCount} file(s).`,
+        });
       }
     } catch (error) {
       console.error("Import failed:", error);
@@ -126,5 +156,7 @@ export const useMediaImport = () => {
   return {
     importMedia,
     isLoading,
+    toastMessage,
+    clearToast: () => setToastMessage(null),
   };
 };

@@ -32,6 +32,8 @@ export interface ThumbnailTile {
     thumb_width: number;
     thumb_height: number;
   };
+  actual_width?: number;
+  actual_height?: number;
 }
 
 export interface FilmstripState {

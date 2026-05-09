@@ -92,10 +92,7 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!dragStartRef.current || !onDragMove) {
-      console.log("[CLIP] ⚠️ Pointer move ignored", {
-        hasDragStart: !!dragStartRef.current,
-        hasOnDragMove: !!onDragMove,
-      });
+      // Silently ignore pointer moves when not dragging (normal behavior)
       return;
     }
 

@@ -70,9 +70,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   addMediaAsset: (asset) => {
-    set((state) => ({
-      mediaAssets: [...state.mediaAssets, asset],
-    }));
+    set((state) => {
+      // Check if asset with same path already exists
+      const existingAsset = state.mediaAssets.find((a) => a.path === asset.path);
+
+      if (existingAsset) {
+        console.log(`[ProjectStore] Duplicate asset detected, skipping: ${asset.path}`);
+        return state; // No change
+      }
+
+      return {
+        mediaAssets: [...state.mediaAssets, asset],
+      };
+    });
     get().scheduleAutoSave();
 
     // Trigger background thumbnail pre-extraction for video assets.

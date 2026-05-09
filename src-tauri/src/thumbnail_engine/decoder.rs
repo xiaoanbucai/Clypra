@@ -1,57 +1,10 @@
-//! Native FFmpeg decoder for ultra-fast thumbnail extraction
+//! Native FFmpeg decoder with hardware acceleration.
 //!
-//! This module replaces the sidecar-based extraction with direct FFmpeg API calls.
-//! Key features:
-//! - One decoder per video file, reused across frame requests
-//! - Hardware acceleration (VideoToolbox on macOS, D3D11VA on Windows, VAAPI on Linux)
-//! - In-memory decoder pool for instant subsequent requests
-//! - **Sequential decoding optimization for timeline scrubbing**
-//!
-//! ## Sequential Decoding Optimization
-//!
-//! Modern video editors don't seek on every frame request during timeline scrubbing.
-//! Instead, they maintain decoder state and decode forward when possible.
-//!
-//! ### The Problem
-//! Naive approach (seek every frame):
-//! ```text
-//! Request 1.0s → seek → decode
-//! Request 1.1s → seek → decode  ← wasteful!
-//! Request 1.2s → seek → decode  ← wasteful!
-//! Request 1.3s → seek → decode  ← wasteful!
-//! ```
-//!
-//! ### The Solution
-//! Sequential decoding (this implementation):
-//! ```text
-//! Request 1.0s → seek → decode
-//! Request 1.1s → decode forward (no seek!)
-//! Request 1.2s → decode forward (no seek!)
-//! Request 1.3s → decode forward (no seek!)
-//! ```
-//!
-//! ### How It Works
-//!
-//! Each decoder maintains state:
-//! - `current_pts`: Current decoder position in stream
-//! - `last_requested_pts`: Last requested timestamp
-//! - `sequential_hits`: Counter for sequential forward requests
-//! - `gop_start_pts`: Start of current GOP (Group of Pictures)
-//!
-//! Decision logic:
-//! 1. **Backward request** → Always seek (can't decode backward)
-//! 2. **Forward within 2s window** → Decode forward (no seek)
-//! 3. **Forward beyond 2s** → Seek to new position
-//! 4. **Sequential pattern detected** (3+ hits) → Expand window to 5s
-//!
-//! ### Performance Impact
-//!
-//! Timeline scrubbing (30 frames in 2 seconds):
-//! - **Without optimization**: 30 seeks × ~20ms = 600ms
-//! - **With optimization**: 1 seek × 20ms + 29 decodes × 3ms = 107ms
-//! - **Speedup**: ~5.6x faster
-//!
-//! This makes timeline scrubbing feel instant and responsive.
+//! Features:
+//! - Reusable decoder pool (one per video file)
+//! - Hardware decode (VideoToolbox/D3D11VA/VAAPI)
+//! - Sequential decoding optimization (avoids seeking during scrubbing)
+//! - Display-aware geometry (respects SAR/DAR/rotation)
 
 use dashmap::DashMap;
 use ffmpeg_next as ffmpeg;
@@ -59,9 +12,46 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Centralized display geometry model.
+#[derive(Debug, Clone, Copy)]
+pub struct DisplayGeometry {
+    pub encoded_width: u32,
+    pub encoded_height: u32,
+    pub display_width: u32,
+    pub display_height: u32,
+    pub sar_num: i32,
+    pub sar_den: i32,
+    pub rotation: u32,
+}
+
+impl DisplayGeometry {
+    pub fn from_encoded(width: u32, height: u32, sar: (i32, i32), rotation: u32) -> Self {
+        let (display_w, display_h) = if sar.0 > 0 && sar.1 > 0 && sar.0 != sar.1 {
+            let w = ((width as f64) * (sar.0 as f64) / (sar.1 as f64)).round() as u32;
+            (w, height)
+        } else {
+            (width, height)
+        };
+        
+        let (final_w, final_h) = if rotation == 90 || rotation == 270 {
+            (display_h, display_w)
+        } else {
+            (display_w, display_h)
+        };
+        
+        Self {
+            encoded_width: width,
+            encoded_height: height,
+            display_width: final_w,
+            display_height: final_h,
+            sar_num: sar.0,
+            sar_den: sar.1,
+            rotation,
+        }
+    }
+}
+
 /// Port of FFmpeg's av_display_rotation_get from libavutil/display.h.
-/// Extracts the rotation angle (in degrees) from a 3×3 display matrix.
-/// The matrix is 9 × i32 values in 16.16 fixed-point format.
 unsafe fn av_display_rotation_get(matrix: *const i32) -> f64 {
     let s0 = *matrix.add(0) as f64; // matrix[0]
     let s1 = *matrix.add(1) as f64; // matrix[1]
@@ -82,31 +72,12 @@ unsafe fn av_display_rotation_get(matrix: *const i32) -> f64 {
     -angle
 }
 
-/// Decoder state for sequential frame optimization
-///
-/// Tracks decoder position and request patterns to avoid unnecessary seeks.
-/// This is critical for timeline scrubbing performance.
-///
-/// # Fields
-/// - `current_pts`: Where the decoder is currently positioned (in stream time base units)
-/// - `last_requested_pts`: The last timestamp requested by the caller
-/// - `gop_start_pts`: Approximate start of the current GOP (Group of Pictures)
-/// - `sequential_hits`: Number of consecutive forward requests (used to detect scrubbing)
-///
-/// # Sequential Window
-/// - Default: 2 seconds (allows decoding forward without seeking)
-/// - Extended: 5 seconds (when 3+ sequential hits detected)
-///
-/// This allows smooth timeline scrubbing without constant seeking.
+/// Decoder state for sequential frame optimization.
 #[derive(Debug, Clone)]
 struct DecoderState {
-    /// Current decoder position (PTS in stream time base)
     current_pts: i64,
-    /// Last requested timestamp (PTS in stream time base)
     last_requested_pts: i64,
-    /// Start of current GOP (Group of Pictures)
     gop_start_pts: i64,
-    /// Number of sequential forward requests
     sequential_hits: u32,
 }
 
@@ -120,22 +91,17 @@ impl DecoderState {
         }
     }
 
-    /// Check if we can decode forward without seeking
     fn can_decode_forward(&self, target_pts: i64, sequential_window: i64) -> bool {
-        // Must be ahead of current position
         if target_pts <= self.current_pts {
             return false;
         }
 
-        // Must be within sequential window (e.g., 2 seconds worth of frames)
         let distance = target_pts - self.current_pts;
         if distance > sequential_window {
             return false;
         }
 
-        // If we're in a sequential pattern, allow larger window
         if self.sequential_hits >= 3 {
-            // Allow up to 5 seconds for scrubbing
             return distance <= sequential_window * 2;
         }
 
@@ -161,6 +127,8 @@ pub struct VideoDecoder {
     pub duration: f64,
     pub width: u32,
     pub height: u32,
+    /// Sample Aspect Ratio (pixel shape)
+    sar: (i32, i32),
     /// Rotation from container metadata (0, 90, 180, 270)
     rotation: u32,
     /// Decoder state for sequential optimization
@@ -169,13 +137,11 @@ pub struct VideoDecoder {
 
 impl VideoDecoder {
     pub fn open(path: &str) -> Result<Self, String> {
-        // Initialize FFmpeg once globally
         ffmpeg::init().map_err(|e| e.to_string())?;
 
         let input_ctx = ffmpeg::format::input(&path)
             .map_err(|e| format!("Cannot open: {}", e))?;
 
-        // Find best video stream
         let stream = input_ctx
             .streams()
             .best(ffmpeg::media::Type::Video)
@@ -183,13 +149,27 @@ impl VideoDecoder {
 
         let stream_index = stream.index();
         let time_base = stream.time_base();
+        
+        let sar = unsafe {
+            let codecpar = (*stream.as_ptr()).codecpar;
+            if !codecpar.is_null() {
+                let sar_num = (*codecpar).sample_aspect_ratio.num;
+                let sar_den = (*codecpar).sample_aspect_ratio.den;
+                if sar_den > 0 {
+                    (sar_num, sar_den)
+                } else {
+                    (1, 1) // Square pixels
+                }
+            } else {
+                (1, 1)
+            }
+        };
+        
+        eprintln!("[VideoDecoder::open] SAR: {}:{}", sar.0, sar.1);
 
-        // Detect rotation from stream metadata or display matrix side data.
-        // Older encoders set a "rotate" tag; modern phones (iOS) use a display matrix.
         let rotation = {
             let mut rot = 0i32;
 
-            // 1. Try the "rotate" metadata tag first
             for (key, value) in stream.metadata().iter() {
                 if key.eq_ignore_ascii_case("rotate") {
                     rot = value.parse::<i32>().unwrap_or(0);
@@ -197,11 +177,9 @@ impl VideoDecoder {
                 }
             }
 
-            // 2. If no tag, try the display matrix side data
             if rot == 0 {
                 unsafe {
                     let stream_ptr = stream.as_ptr();
-                    // Try codecpar side data (FFmpeg 6.1+)
                     let codecpar = (*stream_ptr).codecpar;
                     if !codecpar.is_null() {
                         let nb_sd = (*codecpar).nb_coded_side_data as usize;
@@ -220,7 +198,6 @@ impl VideoDecoder {
                 }
             }
 
-            // Normalize to nearest 90-degree step
             let abs_rot = ((rot % 360) + 360) as u32 % 360;
             match abs_rot {
                 r if r > 45 && r <= 135 => 90,
@@ -234,10 +211,7 @@ impl VideoDecoder {
             eprintln!("[VideoDecoder::open] Detected rotation={}°", rotation);
         }
 
-        // Duration in seconds
         let duration = input_ctx.duration() as f64 / ffmpeg::ffi::AV_TIME_BASE as f64;
-
-        // Build codec context
         let codec_ctx = ffmpeg::codec::context::Context::from_parameters(
             stream.parameters()
         ).map_err(|e| e.to_string())?;
@@ -252,30 +226,54 @@ impl VideoDecoder {
             duration,
             width,
             height,
+            sar,
             rotation,
             state: DecoderState::new(),
         })
     }
+    
+    pub fn display_dimensions(&self) -> (u32, u32) {
+        let display_w = if self.sar.0 > 0 && self.sar.1 > 0 && self.sar.0 != self.sar.1 {
+            ((self.width as f64) * (self.sar.0 as f64) / (self.sar.1 as f64)).round() as u32
+        } else {
+            self.width
+        };
+        let display_h = self.height;
+        
+        if self.rotation == 90 || self.rotation == 270 {
+            (display_h, display_w)
+        } else {
+            (display_w, display_h)
+        }
+    }
+    
+    pub fn sar(&self) -> (i32, i32) {
+        self.sar
+    }
 
-    /// Get the detected rotation angle (0, 90, 180, or 270)
     pub fn rotation(&self) -> u32 {
         self.rotation
     }
+    
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+    
+    pub fn height(&self) -> u32 {
+        self.height
+    }
 
-    /// Get the frame rate (fps) from the time base
     pub fn fps(&self) -> f64 {
         if self.time_base.denominator() > 0 {
             self.time_base.denominator() as f64 / self.time_base.numerator() as f64
         } else {
-            30.0 // Default fallback
+            30.0
         }
     }
 
-    /// Try hardware acceleration, fall back to software silently
     fn open_with_hw(
         mut ctx: ffmpeg::codec::context::Context,
     ) -> Result<(ffmpeg::codec::decoder::Video, u32, u32), String> {
-        // Platform-specific hardware decoder priority
         #[cfg(target_os = "macos")]
         let hw_types: &[u32] = &[ffmpeg::ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX as u32];
         #[cfg(target_os = "windows")]
@@ -285,7 +283,6 @@ impl VideoDecoder {
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         let hw_types: &[u32] = &[];
 
-        // Try hardware decode
         for &hw_type_raw in hw_types {
             unsafe {
                 let hw_type = std::mem::transmute(hw_type_raw);
@@ -305,7 +302,6 @@ impl VideoDecoder {
             }
         }
 
-        // Open decoder (hw or software — FFmpeg decides)
         let decoder = ctx.decoder().video().map_err(|e| e.to_string())?;
         let w = decoder.width();
         let h = decoder.height();
@@ -315,8 +311,7 @@ impl VideoDecoder {
         Ok((decoder, w, h))
     }
 
-    /// Seek and decode a single frame — reuses this decoder instance
-    /// Optimized for sequential timeline scrubbing (avoids seeking when possible)
+    /// Seek and decode a single frame. Optimized for sequential timeline scrubbing.
     pub fn decode_frame(
         &mut self,
         timestamp_secs: f64,
@@ -428,22 +423,41 @@ impl VideoDecoder {
         // Handle hardware frames (copy back from GPU to CPU if needed)
         let cpu_frame = self.to_cpu_frame(best_frame)?;
 
-        // Scale to output dimensions and convert to RGBA
-        // If rotation is 90/270, swap the scale target so the final rotated image
-        // has the caller's requested (out_width × out_height).
-        let (scale_w, scale_h) = if self.rotation == 90 || self.rotation == 270 {
-            (out_height, out_width) // pre-swap: scale to HxW, then rotate → WxH
-        } else {
+        // Explicit display geometry calculation (prevents accidental SAR handling)
+        let (display_w, display_h) = self.display_dimensions();
+        
+        eprintln!("[decode_frame] Display geometry: {}×{} pixels → {}×{} display (SAR {}:{})",
+                  self.width, self.height, display_w, display_h, self.sar.0, self.sar.1);
+        
+        // Calculate target dimensions maintaining display aspect ratio
+        let display_aspect = display_w as f64 / display_h as f64;
+        let target_aspect = out_width as f64 / out_height as f64;
+        
+        let (fit_w, fit_h) = if (display_aspect - target_aspect).abs() < 0.01 {
             (out_width, out_height)
-        };
-
-        let rgba_raw = self.scale_to_rgba(&cpu_frame, scale_w, scale_h)?;
-
-        // Apply rotation if needed
-        let rgba = if self.rotation != 0 {
-            Self::rotate_rgba(&rgba_raw, scale_w, scale_h, self.rotation)
         } else {
-            rgba_raw
+            let scale = (out_width as f64 / display_w as f64)
+                .min(out_height as f64 / display_h as f64);
+            let w = (display_w as f64 * scale).round() as u32;
+            let h = (display_h as f64 * scale).round() as u32;
+            (w.max(1), h.max(1))
+        };
+        
+        // Account for rotation when determining scale target
+        let (scale_target_w, scale_target_h) = if self.rotation == 90 || self.rotation == 270 {
+            (fit_h, fit_w)
+        } else {
+            (fit_w, fit_h)
+        };
+        
+        // Single-pass YUV→RGBA scale with display-aware dimensions
+        let scaled_rgba = self.scale_to_rgba_explicit(&cpu_frame, scale_target_w, scale_target_h)?;
+        
+        // Rotate if needed
+        let rgba = if self.rotation != 0 {
+            Self::rotate_rgba(&scaled_rgba, scale_target_w, scale_target_h, self.rotation)
+        } else {
+            scaled_rgba
         };
         
         let total_time = start.elapsed();
@@ -485,7 +499,11 @@ impl VideoDecoder {
         }
     }
 
-    fn scale_to_rgba(
+    /// Scale YUV frame to RGBA
+    /// 
+    /// Uses raw pixel dimensions to prevent double SAR application.
+    /// SAR correction is handled by caller through geometry calculation.
+    fn scale_to_rgba_explicit(
         &self,
         frame: &ffmpeg::frame::Video,
         out_w: u32,
@@ -521,6 +539,67 @@ impl VideoDecoder {
         }
         
         Ok(rgba)
+    }
+    
+    /// Scale an RGBA buffer to new dimensions
+    /// Used after rotation to scale display-oriented frames
+    pub fn scale_rgba_buffer(
+        &self,
+        rgba: &[u8],
+        src_w: u32,
+        src_h: u32,
+        dst_w: u32,
+        dst_h: u32,
+    ) -> Result<Vec<u8>, String> {
+        use ffmpeg_next::software::scaling::{context::Context, flag::Flags};
+        
+        // Create a temporary frame from RGBA buffer
+        let mut src_frame = ffmpeg::frame::Video::new(
+            ffmpeg::format::Pixel::RGBA,
+            src_w,
+            src_h,
+        );
+        
+        // Copy RGBA data into frame (row-by-row to handle stride alignment)
+        let stride = src_frame.stride(0) as usize;
+        let width = src_w as usize;
+        let height = src_h as usize;
+        let src_data = src_frame.data_mut(0);
+        for y in 0..height {
+            let row_start = y * stride;
+            let src_row_start = y * width * 4;
+            src_data[row_start..row_start + (width * 4)]
+                .copy_from_slice(&rgba[src_row_start..src_row_start + (width * 4)]);
+        }
+        
+        // Scale to destination size
+        let mut scaler = Context::get(
+            ffmpeg::format::Pixel::RGBA,
+            src_w,
+            src_h,
+            ffmpeg::format::Pixel::RGBA,
+            dst_w,
+            dst_h,
+            Flags::BILINEAR,
+        ).map_err(|e| e.to_string())?;
+        
+        let mut dst_frame = ffmpeg::frame::Video::empty();
+        scaler.run(&src_frame, &mut dst_frame).map_err(|e| e.to_string())?;
+        
+        // Extract tightly packed RGBA
+        let stride = dst_frame.stride(0) as usize;
+        let width = dst_frame.width() as usize;
+        let height = dst_frame.height() as usize;
+        let dst_data = dst_frame.data(0);
+        
+        let mut result = Vec::with_capacity(width * height * 4);
+        for y in 0..height {
+            let row_start = y * stride;
+            let row_pixels = &dst_data[row_start..row_start + (width * 4)];
+            result.extend_from_slice(row_pixels);
+        }
+        
+        Ok(result)
     }
 
     /// Rotate an RGBA buffer by 90, 180, or 270 degrees.
@@ -602,4 +681,189 @@ pub async fn get_decoder(path: &str) -> Result<Arc<Mutex<VideoDecoder>>, String>
 /// Call this when a clip is removed from the project to free memory
 pub fn release_decoder(path: &str) {
     DECODER_POOL.remove(path);
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod display_dimensions_tests {
+    /// Helper to test display dimension calculation without full decoder
+    fn calc_display_dims(
+        width: u32,
+        height: u32,
+        sar: (i32, i32),
+        rotation: u32,
+    ) -> (u32, u32) {
+        // Step 1: Apply SAR
+        let display_w = if sar.0 > 0 && sar.1 > 0 && sar.0 != sar.1 {
+            ((width as f64) * (sar.0 as f64) / (sar.1 as f64)).round() as u32
+        } else {
+            width
+        };
+        let display_h = height;
+        
+        // Step 2: Apply rotation
+        if rotation == 90 || rotation == 270 {
+            (display_h, display_w)
+        } else {
+            (display_w, display_h)
+        }
+    }
+
+    #[test]
+    fn test_square_pixels_landscape() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 1), 0);
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn test_square_pixels_portrait() {
+        let (w, h) = calc_display_dims(720, 1280, (1, 1), 0);
+        assert_eq!((w, h), (720, 1280));
+    }
+
+    #[test]
+    fn test_rotation_90_landscape_to_portrait() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 1), 90);
+        assert_eq!((w, h), (1080, 1920));
+    }
+
+    #[test]
+    fn test_rotation_270_landscape_to_portrait() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 1), 270);
+        assert_eq!((w, h), (1080, 1920));
+    }
+
+    #[test]
+    fn test_rotation_180_no_swap() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 1), 180);
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn test_anamorphic_handbrake_portrait() {
+        // HandBrake anamorphic: 1920×1080 pixels, SAR 81:256 → 608×1080 display
+        let (w, h) = calc_display_dims(1920, 1080, (81, 256), 0);
+        assert_eq!((w, h), (608, 1080));
+    }
+
+    #[test]
+    fn test_anamorphic_wide_screen() {
+        let (w, h) = calc_display_dims(1440, 1080, (4, 3), 0);
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn test_invalid_sar_zero_numerator() {
+        let (w, h) = calc_display_dims(4320, 7680, (0, 1), 0);
+        assert_eq!((w, h), (4320, 7680));
+    }
+
+    #[test]
+    fn test_invalid_sar_zero_denominator() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 0), 0);
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn test_invalid_sar_both_zero() {
+        let (w, h) = calc_display_dims(1920, 1080, (0, 0), 0);
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn test_negative_sar() {
+        let (w, h) = calc_display_dims(1920, 1080, (-1, 1), 0);
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn test_8k_portrait_capcut() {
+        let (w, h) = calc_display_dims(4320, 7680, (0, 1), 0);
+        assert_eq!((w, h), (4320, 7680));
+    }
+
+    #[test]
+    fn test_iphone_portrait_rotation() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 1), 90);
+        assert_eq!((w, h), (1080, 1920));
+    }
+
+    #[test]
+    fn test_combined_sar_and_rotation() {
+        let (w, h) = calc_display_dims(1920, 1080, (81, 256), 90);
+        assert_eq!((w, h), (1080, 608));
+    }
+
+    #[test]
+    fn test_extreme_sar_wide() {
+        let (w, h) = calc_display_dims(1920, 1080, (16, 9), 0);
+        assert_eq!((w, h), (3413, 1080));
+    }
+
+    #[test]
+    fn test_extreme_sar_narrow() {
+        let (w, h) = calc_display_dims(1920, 1080, (9, 16), 0);
+        assert_eq!((w, h), (1080, 1080));
+    }
+
+    #[test]
+    fn test_tiktok_vertical() {
+        let (w, h) = calc_display_dims(1080, 1920, (1, 1), 0);
+        assert_eq!((w, h), (1080, 1920));
+    }
+
+    #[test]
+    fn test_instagram_square() {
+        let (w, h) = calc_display_dims(1080, 1080, (1, 1), 0);
+        assert_eq!((w, h), (1080, 1080));
+    }
+
+    #[test]
+    fn test_ultrawide_cinema() {
+        let (w, h) = calc_display_dims(2560, 1080, (1, 1), 0);
+        assert_eq!((w, h), (2560, 1080));
+    }
+
+    #[test]
+    fn test_old_4_3_tv() {
+        let (w, h) = calc_display_dims(640, 480, (1, 1), 0);
+        assert_eq!((w, h), (640, 480));
+    }
+
+    #[test]
+    fn test_dvd_anamorphic() {
+        let (w, h) = calc_display_dims(720, 480, (32, 27), 0);
+        assert_eq!((w, h), (853, 480));
+    }
+
+    #[test]
+    fn test_pal_dvd_anamorphic() {
+        let (w, h) = calc_display_dims(720, 576, (64, 45), 0);
+        assert_eq!((w, h), (1024, 576));
+    }
+
+    #[test]
+    fn test_zero_dimensions() {
+        let (w, h) = calc_display_dims(0, 0, (1, 1), 0);
+        assert_eq!((w, h), (0, 0));
+    }
+
+    #[test]
+    fn test_single_pixel() {
+        let (w, h) = calc_display_dims(1, 1, (1, 1), 0);
+        assert_eq!((w, h), (1, 1));
+    }
+
+    #[test]
+    fn test_very_large_sar() {
+        let (w, h) = calc_display_dims(1920, 1080, (1000, 1), 0);
+        assert_eq!((w, h), (1920000, 1080));
+    }
+
+    #[test]
+    fn test_very_small_sar() {
+        let (w, h) = calc_display_dims(1920, 1080, (1, 1000), 0);
+        assert_eq!((w, h), (2, 1080));
+    }
 }

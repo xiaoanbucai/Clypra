@@ -18,7 +18,7 @@ import type { MediaTabProps } from "./types";
 
 export const MediaTab: React.FC<MediaTabProps> = ({ onAddToTimeline }) => {
   const { mediaAssets, removeMediaAsset, addMediaAsset } = useProjectStore();
-  const { importMedia, isLoading } = useMediaImport();
+  const { importMedia, isLoading, toastMessage, clearToast } = useMediaImport();
   // Note: previewMediaId is used for visual selection state only.
   // Preview rendering is now timeline-driven, not media-selection driven.
   const { setPreviewMedia, previewMediaId } = useUIStore();
@@ -47,6 +47,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({ onAddToTimeline }) => {
           // Check if asset already exists
           const existingAsset = mediaAssets.find((a) => a.path === filePath);
           if (existingAsset) {
+            console.log(`[MediaTab] Asset already imported, skipping: ${filePath}`);
             continue;
           }
 
@@ -54,7 +55,7 @@ export const MediaTab: React.FC<MediaTabProps> = ({ onAddToTimeline }) => {
           if (type === "video" || type === "audio") {
             const metadata: VideoMetadata = await invoke("get_video_metadata", { path: filePath });
             // Use extract_poster_frame_command which extracts at 10% of duration (avoids black frames at 0s)
-            const posterFrame: string | undefined = type === "video" ? ((await invoke("extract_poster_frame_command", { videoPath: filePath, duration: metadata.duration, dpr: 1.0 }).catch(() => undefined)) as string | undefined) : undefined;
+            const posterFrame: string | undefined = type === "video" ? ((await invoke("extract_poster_frame_command", { videoPath: filePath, duration: metadata.duration, dpr: window.devicePixelRatio || 1.0 }).catch(() => undefined)) as string | undefined) : undefined;
 
             const asset = {
               id: `asset-${Date.now()}-${Math.random()}`,
@@ -131,18 +132,86 @@ export const MediaTab: React.FC<MediaTabProps> = ({ onAddToTimeline }) => {
       {contextMenu && (
         <ContextMenu
           items={[
-            {
-              label: "Add to Timeline",
-              onClick: () => {
-                const asset = mediaAssets.find((a) => a.id === contextMenu.mediaId);
-                if (asset) onAddToTimeline?.(asset, "media");
-              },
-            },
+            usedMediaIds.has(contextMenu.mediaId)
+              ? {
+                  label: "Remove from Timeline",
+                  onClick: () => {
+                    const { removeClip, normalizeTrack } = useTimelineStore.getState();
+                    const affectedTracks = new Set<string>();
+
+                    // Find all clips using this media asset
+                    const clipsToRemove = clips.filter((c) => c.mediaId === contextMenu.mediaId);
+
+                    // Prevent removing all clips from main track
+                    const store = useTimelineStore.getState();
+                    const mainTrackId = store.mainVideoTrackId;
+
+                    if (mainTrackId) {
+                      const mainClipIds = store.clips.filter((c) => c.trackId === mainTrackId).map((c) => c.id);
+                      const removingFromMain = clipsToRemove.filter((c) => mainClipIds.includes(c.id));
+                      const wouldEmptyMain = mainClipIds.length > 0 && removingFromMain.length === mainClipIds.length;
+
+                      if (wouldEmptyMain) {
+                        console.log("[MediaTab] 🚫 Cannot remove all clips from main track");
+                        return;
+                      }
+                    }
+
+                    console.log("[MediaTab] 🗑️ Removing clips from timeline", {
+                      mediaId: contextMenu.mediaId,
+                      clipCount: clipsToRemove.length,
+                    });
+
+                    // Remove all clips using this asset
+                    clipsToRemove.forEach((clip) => {
+                      affectedTracks.add(clip.trackId);
+                      removeClip(clip.id);
+                    });
+
+                    // Normalize affected tracks to close gaps
+                    affectedTracks.forEach((trackId) => normalizeTrack(trackId));
+                  },
+                }
+              : {
+                  label: "Add to Timeline",
+                  onClick: () => {
+                    const asset = mediaAssets.find((a) => a.id === contextMenu.mediaId);
+                    if (asset) onAddToTimeline?.(asset, "media");
+                  },
+                },
             { label: "Delete", onClick: () => removeMediaAsset(contextMenu.mediaId), danger: true },
           ]}
           position={{ x: contextMenu.x, y: contextMenu.y }}
           onClose={() => setContextMenu(null)}
         />
+      )}
+
+      {/* Toast notifications */}
+      {toastMessage && (
+        <div className={`fixed bottom-4 right-4 z-50 max-w-md rounded-lg shadow-lg transition-all duration-300 ${toastMessage.type === "warning" ? "bg-gradient-to-br from-yellow-500 to-orange-500" : "bg-gradient-to-br from-green-500 to-emerald-600"}`} role="alert">
+          <div className="flex items-start gap-3 p-4">
+            <div className="shrink-0 mt-0.5">
+              {toastMessage.type === "warning" ? (
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white">{toastMessage.type === "warning" ? "Warning" : "Success"}</p>
+              <p className="mt-1 text-sm text-white/90">{toastMessage.message}</p>
+            </div>
+            <button onClick={clearToast} className="shrink-0 ml-2 text-white/80 hover:text-white transition-colors">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -177,7 +246,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ asset, isSelected, isUsedInTimeli
   return (
     <div ref={drag} onClick={handleClick} onContextMenu={onContextMenu} className={`group relative bg-surface-raised rounded overflow-hidden transition-all cursor-pointer ${isDragging ? "opacity-50" : ""} ${isSelected ? "ring-1 ring-accent" : ""}`}>
       <div className="aspect-video bg-surface-raised flex items-center justify-center relative">
-        {asset.posterFrame && !(/\.(mp4|mov|avi|mkv|webm|flv)(%|$)/i.test(asset.posterFrame)) ? <img src={asset.posterFrame} alt={asset.name} className="w-full h-full object-contain" /> : <div className="w-8 h-8">{asset.type === "video" ? <Film className="w-full h-full text-text-muted" /> : asset.type === "audio" ? <Music className="w-full h-full text-text-muted" /> : <Image className="w-full h-full text-text-muted" />}</div>}
+        {asset.posterFrame && !/\.(mp4|mov|avi|mkv|webm|flv)(%|$)/i.test(asset.posterFrame) ? <img src={asset.posterFrame} alt={asset.name} className="w-full h-full object-contain" /> : <div className="w-8 h-8">{asset.type === "video" ? <Film className="w-full h-full text-text-muted" /> : asset.type === "audio" ? <Music className="w-full h-full text-text-muted" /> : <Image className="w-full h-full text-text-muted" />}</div>}
         {asset.duration > 0 && (
           <div className="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-xs text-white">
             {Math.floor(Math.ceil(asset.duration) / 60)}:{String(Math.ceil(asset.duration) % 60).padStart(2, "0")}

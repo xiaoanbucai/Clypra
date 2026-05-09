@@ -3,7 +3,27 @@
 //! Tests are organized in a separate file for better code organization.
 
 use crate::thumbnail_engine::*;
+use crate::thumbnail_engine::decoder::VideoDecoder;
 use std::path::PathBuf;
+
+#[test]
+fn test_decoder_8k_portrait_pipeline() {
+    let path = "/Users/AIEraDev/Documents/HandBrake/Claude Mythos.mp4";
+    let mut decoder = VideoDecoder::open(path).expect("open video");
+    eprintln!("[test] Opened {}x{} rotation={}°", decoder.width(), decoder.height(), decoder.rotation());
+
+    // Decode a frame at 1s into a 180x320 thumbnail
+    let start = std::time::Instant::now();
+    let rgba = decoder.decode_frame(1.0, 180, 320).expect("decode frame");
+    let elapsed = start.elapsed();
+
+    eprintln!("[test] Decoded {} bytes in {:?}", rgba.len(), elapsed);
+    assert_eq!(rgba.len(), 180 * 320 * 4, "Expected 180x320 RGBA buffer");
+    // Sanity: not all black
+    let avg: u64 = rgba.iter().map(|&v| v as u64).sum::<u64>() / rgba.len() as u64;
+    eprintln!("[test] Average pixel value: {}", avg);
+    assert!(avg > 5, "Frame appears completely black");
+}
 
 #[test]
 fn test_active_tracker_overlapping_timestamps() {

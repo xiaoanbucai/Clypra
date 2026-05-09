@@ -8,8 +8,9 @@ import { createClipFromAsset } from "../../lib/timelineClip";
 import { GPUPreview } from "./GPUPreview";
 import { AudioWaveform } from "./AudioWaveform";
 
-// GPU preview is now the default for video playback
-const USE_GPU_PREVIEW = true;
+// GPU preview for scrubbing only (precise frame-accurate seeking)
+// Use HTML5 video for playback (hardware decode, buffering, smooth playback)
+const USE_GPU_PREVIEW = false;
 
 export const SourcePreview: React.FC = () => {
   const { sourceAsset, sourceInPoint, sourceOutPoint, exitSourceMode, markSourceIn, markSourceOut } = useUIStore();

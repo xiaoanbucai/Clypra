@@ -72,7 +72,7 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
   const gpuCacheRef = useRef<GPUTextureCache | null>(null);
   const [useGPUCache, setUseGPUCache] = useState(false);
   const [textureKeys, setTextureKeys] = useState<Map<number, string>>(new Map());
-  const componentId = useRef(`filmstrip-${clip.id}-${Math.random().toString(36).substr(2, 9)}`).current;
+  const componentId = useRef(`filmstrip-${clip.id}-${Math.random().toString(36).substring(2, 11)}`).current;
 
   // Try to use global GPU cache first, fall back to local cache
   const useGlobalCache = typeof window !== "undefined" && globalGPUCache.isInitialized();
@@ -80,6 +80,8 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
   // Legacy canvas-based cache (fallback)
   const [frameCache, setFrameCache] = useState<Map<number, string>>(new Map());
   const extractionKeyRef = useRef("");
+  const extractionInProgressRef = useRef(false);
+  const cancelledRef = useRef(false);
   const channelRef = useRef<Channel<ThumbnailTile> | null>(null);
 
   const isVideoSource = useMemo(() => {
@@ -131,12 +133,31 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
 
   // ── Extract once on mount (not on zoom) ─────────────────────────────────
   useEffect(() => {
-    if (!isVideoSource || !mediaAsset.path || !mediaAsset.duration) return;
+    const effectId = Math.random().toString(36).substring(2, 11);
+    console.log(`[ClipFilmstrip ${effectId}] Effect starting`);
+
+    if (!isVideoSource || !mediaAsset.path || !mediaAsset.duration) {
+      console.log(`[ClipFilmstrip ${effectId}] Skipping - not video source or missing data`);
+      return;
+    }
 
     // Only re-extract if the source video or trim points changed
     const extractionKey = `${mediaAsset.path}:${clip.trimIn}:${clip.trimOut}`;
-    if (extractionKey === extractionKeyRef.current) return;
+    if (extractionKey === extractionKeyRef.current && !cancelledRef.current) {
+      console.log(`[ClipFilmstrip ${effectId}] Skipping - extraction key unchanged: ${extractionKey}`);
+      return;
+    }
+
+    // Prevent double extraction from React StrictMode
+    if (extractionInProgressRef.current && !cancelledRef.current) {
+      console.log(`[ClipFilmstrip ${effectId}] Skipping - extraction already in progress`);
+      return;
+    }
+
+    console.log(`[ClipFilmstrip ${effectId}] Starting new extraction: ${extractionKey}`);
     extractionKeyRef.current = extractionKey;
+    extractionInProgressRef.current = true;
+    cancelledRef.current = false; // Reset cancelled flag for new extraction
 
     // Adaptive interval: caps frame count for long videos
     const interval = getExtractionInterval(mediaAsset.duration);
@@ -157,66 +178,35 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
       setFrameCache(new Map(allTimestamps.map((t) => [roundMs(t), ""])));
     }
 
-    let cancelled = false;
     const videoPath = normalizePathForTauriInvoke(mediaAsset.path);
     const receivedCountRef = { current: 0 };
 
-    // Create channel with callback directly in constructor
+    // Create channel with synchronous callback (Tauri doesn't await async callbacks!)
     const channel = new Channel<ThumbnailTile>();
 
-    channel.onmessage = async (tile) => {
-      if (cancelled) return;
+    // ✅ SYNCHRONOUS callback - no async, no awaits
+    // Tauri fires this and moves on - it doesn't await Promises
+    channel.onmessage = (tile) => {
+      // Use ref instead of closure variable to avoid stale closure
+      if (cancelledRef.current) {
+        console.log(`[ClipFilmstrip] Tile received but cancelled: ${tile.time}s`);
+        return;
+      }
 
       receivedCountRef.current++;
 
-      // GPU-optimized path: Use decode_frame_gpu for raw RGBA bytes
-      if (useGPUCache && gpuCacheRef.current) {
-        try {
-          const decodeStart = performance.now();
-
-          // Request raw RGBA bytes (no base64 encoding!)
-          const rgbaBytes = await invoke<number[]>("decode_frame_gpu", {
-            videoPath,
-            timeSecs: tile.time,
-            width: thumbW,
-            height: thumbH,
-          });
-
-          const decodeTime = performance.now() - decodeStart;
-          const uploadStart = performance.now();
-
-          // Upload to GPU texture cache (once)
-          const textureKey = `${mediaAsset.path}:${tile.time}:${thumbW}x${thumbH}`;
-          gpuCacheRef.current.uploadTexture(textureKey, new Uint8Array(rgbaBytes), thumbW, thumbH);
-
-          const uploadTime = performance.now() - uploadStart;
-
-          // Track performance metrics
-          performanceMetrics.trackTextureUpload(uploadTime);
-          performanceMetrics.trackScrubLatency(decodeTime + uploadTime);
-
-          // Store texture key for rendering
-          const key = roundMs(tile.time);
-          setTextureKeys((prev) => {
-            const next = new Map(prev);
-            next.set(key, textureKey);
-            return next;
-          });
-
-          return;
-        } catch (err) {
-          console.error(`[ClipFilmstrip] GPU upload failed at ${tile.time}s, falling back to canvas:`, err);
-          // Fall through to canvas-based rendering
-        }
+      // Log first few tiles to verify reception
+      if (receivedCountRef.current <= 5 || receivedCountRef.current % 20 === 0) {
+        console.log(`[ClipFilmstrip] Received tile #${receivedCountRef.current}: time=${tile.time.toFixed(2)}s atlas=${!!tile.atlas_coords} path=${tile.path.substring(0, 50)}...`);
       }
 
-      // Canvas-based fallback path
       // Handle atlas-based tiles
       if (tile.atlas_coords) {
-        // Extract thumbnail from atlas sprite sheet
-        extractThumbnailFromAtlas(tile.path, tile.atlas_coords)
+        console.log(`[ClipFilmstrip] Processing atlas tile at ${tile.time}s`);
+        extractThumbnailFromAtlas(tile.path, tile.atlas_coords, tile.actual_width, tile.actual_height)
           .then((dataUrl) => {
             const key = roundMs(tile.time);
+            console.log(`[ClipFilmstrip] Atlas tile extracted, setting cache key ${key}`);
             setFrameCache((prev) => {
               const next = new Map(prev);
               next.set(key, dataUrl);
@@ -226,25 +216,15 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
           .catch((err) => {
             console.error(`[ClipFilmstrip] Failed to extract atlas tile at ${tile.time}s:`, err);
           });
-      } else if (tile.path.startsWith("data:image/rgba;base64,")) {
-        // IMMEDIATE PATH: Raw RGBA data URL from backend (no compression!)
-        // Convert RGBA to displayable format using canvas
-        decodeRgbaDataUrl(tile.path, thumbW, thumbH)
-          .then((dataUrl) => {
-            const key = roundMs(tile.time);
-            setFrameCache((prev) => {
-              const next = new Map(prev);
-              next.set(key, dataUrl);
-              return next;
-            });
-          })
-          .catch((err) => {
-            console.error(`[ClipFilmstrip] Failed to decode RGBA tile at ${tile.time}s:`, err);
-          });
       } else {
-        // Legacy per-frame tile (WebP or file path)
+        // WebP data URL from Rust - displayable directly!
         const src = tile.path.startsWith("data:") ? tile.path : convertFileSrc(tile.path);
         const key = roundMs(tile.time);
+
+        if (receivedCountRef.current <= 5) {
+          console.log(`[ClipFilmstrip] Setting cache key ${key} with src length ${src.length}`);
+        }
+
         setFrameCache((prev) => {
           const next = new Map(prev);
           next.set(key, src);
@@ -253,48 +233,8 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
       }
     };
 
-    // Helper function to decode RGBA data URL to displayable format
-    // RGBA format: data:image/rgba;base64,<base64_rgba_bytes>
-    // This is the IMMEDIATE path - no compression blocking!
-    const decodeRgbaDataUrl = async (dataUrl: string, width: number, height: number): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        try {
-          // Extract base64 data
-          const base64Data = dataUrl.replace("data:image/rgba;base64,", "");
-
-          // Decode base64 to binary
-          const binaryString = atob(base64Data);
-          const bytes = new Uint8ClampedArray(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-
-          // Create ImageData from RGBA bytes
-          const imageData = new ImageData(bytes, width, height);
-
-          // Create canvas and draw ImageData
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-
-          if (!ctx) {
-            reject(new Error("Failed to get canvas context"));
-            return;
-          }
-
-          ctx.putImageData(imageData, 0, 0);
-
-          // Convert to data URL (browser handles compression efficiently)
-          resolve(canvas.toDataURL("image/webp", 0.9));
-        } catch (err) {
-          reject(err);
-        }
-      });
-    };
-
     // Helper function to extract thumbnail from atlas
-    const extractThumbnailFromAtlas = async (atlasPath: string, coords: { col: number; row: number; thumb_width: number; thumb_height: number }): Promise<string> => {
+    const extractThumbnailFromAtlas = async (atlasPath: string, coords: { col: number; row: number; thumb_width: number; thumb_height: number }, actualWidth?: number, actualHeight?: number): Promise<string> => {
       return new Promise((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -302,10 +242,15 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
 
         img.onload = () => {
           try {
-            // Create canvas to extract thumbnail
+            const cellWidth = coords.thumb_width;
+            const cellHeight = coords.thumb_height;
+
+            const contentWidth = actualWidth ?? cellWidth;
+            const contentHeight = actualHeight ?? cellHeight;
+
             const canvas = document.createElement("canvas");
-            canvas.width = coords.thumb_width;
-            canvas.height = coords.thumb_height;
+            canvas.width = contentWidth;
+            canvas.height = contentHeight;
             const ctx = canvas.getContext("2d");
 
             if (!ctx) {
@@ -313,20 +258,14 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
               return;
             }
 
-            // Extract thumbnail from atlas at (col, row) position
-            ctx.drawImage(
-              img,
-              coords.col * coords.thumb_width, // source x
-              coords.row * coords.thumb_height, // source y
-              coords.thumb_width, // source width
-              coords.thumb_height, // source height
-              0,
-              0, // dest x, y
-              coords.thumb_width, // dest width
-              coords.thumb_height, // dest height
-            );
+            const cellX = coords.col * cellWidth;
+            const cellY = coords.row * cellHeight;
 
-            // Convert to data URL
+            const offsetX = (cellWidth - contentWidth) / 2;
+            const offsetY = (cellHeight - contentHeight) / 2;
+
+            ctx.drawImage(img, cellX + offsetX, cellY + offsetY, contentWidth, contentHeight, 0, 0, contentWidth, contentHeight);
+
             resolve(canvas.toDataURL("image/webp"));
           } catch (err) {
             reject(err);
@@ -354,20 +293,35 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
       onTile: channel,
     })
       .then(() => {
-        console.log(`[ClipFilmstrip] Extraction complete, received ${receivedCountRef.current} frames`);
+        extractionInProgressRef.current = false;
+        if (!cancelledRef.current) {
+          console.log(`[ClipFilmstrip] Extraction complete, received ${receivedCountRef.current} frames`);
+        } else {
+          console.log(`[ClipFilmstrip] Extraction complete but was cancelled (received ${receivedCountRef.current} before cancellation)`);
+        }
       })
       .catch((err) => {
-        if (!cancelled) console.error("[ClipFilmstrip] Extraction failed:", err);
+        extractionInProgressRef.current = false;
+        if (!cancelledRef.current) console.error("[ClipFilmstrip] Extraction failed:", err);
       });
 
     return () => {
-      cancelled = true;
+      console.log(`[ClipFilmstrip ${effectId}] Cleanup called - marking for potential cancellation (received ${receivedCountRef.current} frames so far)`);
+      // Only cancel if we're about to start a NEW extraction (extraction key changed)
+      // Don't cancel ongoing extractions just because of re-renders
+      const currentKey = `${mediaAsset.path}:${clip.trimIn}:${clip.trimOut}`;
+      if (currentKey !== extractionKey) {
+        console.log(`[ClipFilmstrip ${effectId}] Extraction key changed, cancelling old extraction`);
+        cancelledRef.current = true;
+      }
       channelRef.current = null; // Clean up reference
     };
 
     // NOTE: pixelsPerSecond is intentionally NOT in this dependency array.
     // Zoom changes must NOT trigger re-extraction.
-  }, [isVideoSource, mediaAsset.path, mediaAsset.duration, mediaAsset.posterFrame, clip.trimIn, clip.trimOut, thumbW, thumbH, useGPUCache]);
+    // NOTE: useGPUCache is intentionally NOT in this dependency array.
+    // GPU cache initialization must NOT trigger re-extraction.
+  }, [isVideoSource, mediaAsset.path, mediaAsset.duration, mediaAsset.posterFrame, clip.trimIn, clip.trimOut, thumbW, thumbH]);
 
   // ── GPU Rendering (reuse textures, no re-upload) ─────────────────────────
   useEffect(() => {
@@ -439,7 +393,10 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
   // there are fewer cached frames than tile slots. This keeps tiles at
   // ~60px (consistent with ruler tick spacing) and fills the full clip.
   const visibleTiles = useMemo(() => {
-    if (frameCache.size === 0) return [];
+    if (frameCache.size === 0) {
+      console.log(`[ClipFilmstrip] visibleTiles: frameCache is empty`);
+      return [];
+    }
 
     // All cached timestamps sorted — filter out empty placeholders
     const allTimes = Array.from(frameCache.entries())
@@ -447,12 +404,21 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
       .map(([t]) => t)
       .sort((a, b) => a - b);
 
-    if (allTimes.length === 0) return [];
+    if (allTimes.length === 0) {
+      console.log(`[ClipFilmstrip] visibleTiles: no non-empty frames in cache (size=${frameCache.size})`);
+      return [];
+    }
 
     // Count unique sources to detect if we're still showing duplicates
     const uniqueSources = new Set(Array.from(frameCache.values()).filter((src) => src.length > 0));
-    if (uniqueSources.size <= 3) {
-      console.log(`[ClipFilmstrip] visibleTiles: ${uniqueSources.size} unique sources in cache of ${frameCache.size} entries`);
+    console.log(`[ClipFilmstrip] visibleTiles: ${uniqueSources.size} unique sources in cache of ${frameCache.size} entries`);
+
+    // Log first few unique sources to see what they are
+    if (uniqueSources.size <= 5) {
+      const sources = Array.from(uniqueSources);
+      sources.forEach((src, idx) => {
+        console.log(`[ClipFilmstrip] Unique source #${idx + 1}: ${src.substring(0, 80)}...`);
+      });
     }
 
     // Always compute tile count from clip width — never limited by cache size
@@ -468,6 +434,7 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
       sampled.push({ time: t, src: frameCache.get(t)! });
     }
 
+    console.log(`[ClipFilmstrip] visibleTiles: sampled ${sampled.length} tiles from ${allTimes.length} cached frames`);
     return sampled;
   }, [frameCache, clipWidthPx]);
 
@@ -518,12 +485,11 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
             src={tile.src}
             alt=""
             style={{
-              width: tileWidthPx,
-              minWidth: 0,
-              height: stripHeightPx,
+              width: `${tileWidthPx}px`,
+              height: `${stripHeightPx}px`,
               objectFit: "cover",
               objectPosition: "center",
-              flex: "1 1 0",
+              flexShrink: 0,
             }}
             draggable={false}
           />

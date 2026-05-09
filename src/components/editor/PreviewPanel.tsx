@@ -116,7 +116,7 @@ export const PreviewPanel: React.FC = () => {
 };
 
 const ProgramPreview: React.FC = () => {
-  const { isPlaying, currentTime, duration, frameRate, play, pause, seek, formatTime } = usePlayback();
+  const { isPlaying, currentTime, duration, frameRate, playbackSpeed, play, pause, seek, formatTime, setPlaybackSpeed } = usePlayback();
   const { project, mediaAssets } = useProjectStore();
   const { tracks, clips } = useTimelineStore();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,7 +130,9 @@ const ProgramPreview: React.FC = () => {
   const [previewScaleMode, setPreviewScaleMode] = useState<"fit" | "fill">("fit");
   const [previewAspectPreset, setPreviewAspectPreset] = useState<PreviewAspectPreset>("original");
   const [aspectMenuOpen, setAspectMenuOpen] = useState(false);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const aspectMenuRef = useRef<HTMLDivElement>(null);
+  const speedMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!aspectMenuOpen) return;
@@ -142,6 +144,17 @@ const ProgramPreview: React.FC = () => {
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [aspectMenuOpen]);
+
+  useEffect(() => {
+    if (!speedMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (speedMenuRef.current && !speedMenuRef.current.contains(e.target as Node)) {
+        setSpeedMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [speedMenuOpen]);
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -170,6 +183,7 @@ const ProgramPreview: React.FC = () => {
     [tracks, clips, mediaAssets, currentTime, project],
   );
 
+  // Sync videos when playback state changes or when seeking (not every frame)
   useEffect(() => {
     Object.values(videoRefs.current).forEach((video) => {
       if (!video) return;
@@ -178,30 +192,49 @@ const ProgramPreview: React.FC = () => {
 
       video.muted = isMuted || volume === 0;
       video.volume = Math.max(0, Math.min(1, volume / 100));
+      video.playbackRate = playbackSpeed;
 
       if (Number.isFinite(video.duration) && video.duration > 0) {
-        const t = Math.max(0, Math.min(layer.sourceTime, Math.max(0, video.duration - 0.01)));
-        if (Math.abs(video.currentTime - t) > 0.05) {
-          video.currentTime = t;
+        const targetTime = Math.max(0, Math.min(layer.sourceTime, Math.max(0, video.duration - 0.01)));
+
+        // When playing: let videos play naturally, only sync if drift is large
+        // When paused: always sync precisely for scrubbing
+        if (isPlaying) {
+          const drift = Math.abs(video.currentTime - targetTime);
+          // Only seek if drift exceeds 1 second (very lenient during playback)
+          if (drift > 1.0) {
+            video.currentTime = targetTime;
+          }
+        } else {
+          // When paused, sync precisely for accurate scrubbing
+          if (Math.abs(video.currentTime - targetTime) > 0.05) {
+            video.currentTime = targetTime;
+          }
         }
       }
 
       if (isPlaying) {
-        try {
-          const p = video.play();
-          if (p && typeof p.catch === "function") void p.catch(() => undefined);
-        } catch {
-          // noop in test/jsdom environments
+        // Only call play() if video is actually paused
+        if (video.paused) {
+          try {
+            const p = video.play();
+            if (p && typeof p.catch === "function") void p.catch(() => undefined);
+          } catch {
+            // noop in test/jsdom environments
+          }
         }
       } else {
-        try {
-          video.pause();
-        } catch {
-          // noop
+        // Only call pause() if video is actually playing
+        if (!video.paused) {
+          try {
+            video.pause();
+          } catch {
+            // noop
+          }
         }
       }
     });
-  }, [scene, isPlaying, isMuted, volume, previewVideoReadyTick]);
+  }, [scene, isPlaying, isMuted, volume, playbackSpeed, previewVideoReadyTick]);
 
   if (!project) return null;
 
@@ -324,10 +357,42 @@ const ProgramPreview: React.FC = () => {
       {/* ── Bottom Controls ────────────────────────────────────────── */}
       <div className="flex items-center h-10 px-3 shrink-0 relative">
         {/* Timecodes */}
-        <div className="flex items-baseline gap-1 select-none w-[120px]" style={{ fontVariantNumeric: "tabular-nums" }}>
-          <span className="text-[12px] font-medium text-accent">{formatTime(currentTime)}</span>
-          <span className="text-[11px] text-text-muted/50">/</span>
-          <span className="text-[12px] text-text-muted">{formatTime(duration)}</span>
+        <div className="flex items-center gap-1">
+          <div className="flex items-baseline gap-1 select-none w-[120px]" style={{ fontVariantNumeric: "tabular-nums" }}>
+            <span className="text-[12px] font-medium text-accent">{formatTime(currentTime)}</span>
+            <span className="text-[11px] text-text-muted/50">/</span>
+            <span className="text-[12px] text-text-muted">{formatTime(duration)}</span>
+          </div>
+
+          {/* Speed menu */}
+          <div className="relative" ref={speedMenuRef}>
+            <button onClick={() => setSpeedMenuOpen((o) => !o)} className="flex items-center gap-1 px-2 h-6 rounded text-[10px] font-medium text-text-muted hover:text-text-primary hover:bg-white/6 transition-colors" title="Playback speed" aria-expanded={speedMenuOpen}>
+              <span className="max-w-18 truncate">{playbackSpeed}x</span>
+              <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
+            </button>
+            {speedMenuOpen && (
+              <div className="absolute bottom-full right-0 z-50 mb-1 w-[140px] overflow-hidden rounded-lg border border-border bg-surface py-1 text-text-primary shadow-xl" role="listbox">
+                <div className="px-1">
+                  {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      role="option"
+                      aria-selected={playbackSpeed === speed}
+                      className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text-primary hover:bg-surface-raised", playbackSpeed === speed && "bg-surface-raised")}
+                      onClick={() => {
+                        setPlaybackSpeed(speed);
+                        setSpeedMenuOpen(false);
+                      }}
+                    >
+                      <span className="flex w-5 shrink-0 justify-center">{playbackSpeed === speed ? <Check className="h-3.5 w-3.5 text-accent" /> : null}</span>
+                      <span className="min-w-0 flex-1 truncate">{speed}x</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Center play controls */}

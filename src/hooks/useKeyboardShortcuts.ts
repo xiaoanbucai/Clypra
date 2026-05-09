@@ -13,6 +13,12 @@ export const useKeyboardShortcuts = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't capture shortcuts when typing in input fields
+      const target = e.target as HTMLElement;
+      const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+
+      if (isTyping) return; // Let the user type normally
+
       const isMeta = e.ctrlKey || e.metaKey;
 
       // Source preview shortcuts
@@ -69,11 +75,6 @@ export const useKeyboardShortcuts = () => {
         if (result.error) {
           setToastMessage(result.error);
           setTimeout(() => setToastMessage(null), 3000);
-        }
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedClipIds.length > 0) {
-          e.preventDefault();
-          console.log("Delete clip");
         }
       } else if (e.key === "Escape") {
         e.preventDefault();

@@ -8,22 +8,31 @@ pub mod thumbnail_engine;
 use thumbnail_engine::{DensityLevel, ThumbnailTile, init_thumbnail_engine, get_cache_stats, clear_video_thumbnail_cache};
 use thumbnail_engine::decoder::{get_decoder, release_decoder};
 
-/// In-flight extraction request tracker for deduplication
-/// 
-/// Fast scrubbing can queue duplicate requests (1.000s, 1.001s, 1.002s, 1.003s).
-/// This map deduplicates them by sharing the result of the first extraction.
-/// 
-/// Key format: "{video_id}:{timestamp_ms}:{width}x{height}"
-/// Value: broadcast channel sender for sharing results
-/// 
-/// When a request arrives:
-/// 1. Check if extraction is already in-flight for this key
-/// 2. If yes: subscribe to existing broadcast channel and await result
-/// 3. If no: start extraction, create broadcast channel, share result when done
-/// 
-/// This can reduce extraction workload by 70%+ during fast scrubbing.
+/// Calculate fitted dimensions preserving aspect ratio within a max box.
+fn fit_dimensions(
+    src_w: u32,
+    src_h: u32,
+    max_w: u32,
+    max_h: u32,
+) -> (u32, u32) {
+    let src_ratio = src_w as f32 / src_h as f32;
+    let box_ratio = max_w as f32 / max_h as f32;
+    
+    if src_ratio > box_ratio {
+        let w = max_w;
+        let h = ((max_w as f32) / src_ratio).round() as u32;
+        (w, h.max(1))
+    } else {
+        let h = max_h;
+        let w = ((max_h as f32) * src_ratio).round() as u32;
+        (w.max(1), h)
+    }
+}
+
+/// In-flight extraction deduplication for fast scrubbing.
+/// Shares results across duplicate requests to reduce workload by 70%+.
 type InFlightKey = String;
-type InFlightResult = Result<Vec<u8>, String>; // RGBA bytes or error
+type InFlightResult = Result<Vec<u8>, String>;
 
 struct InFlightMap {
     map: DashMap<InFlightKey, broadcast::Sender<InFlightResult>>,
@@ -36,21 +45,16 @@ impl InFlightMap {
         }
     }
 
-    /// Get or create a broadcast channel for this extraction request
-    /// Returns (sender, is_new_request)
     fn get_or_create(&self, key: String) -> (broadcast::Sender<InFlightResult>, bool) {
         if let Some(entry) = self.map.get(&key) {
-            // Extraction already in-flight, reuse existing channel
             (entry.value().clone(), false)
         } else {
-            // New extraction, create broadcast channel
             let (tx, _rx) = broadcast::channel(1);
             self.map.insert(key.clone(), tx.clone());
             (tx, true)
         }
     }
 
-    /// Remove completed extraction from map
     fn remove(&self, key: &str) {
         self.map.remove(key);
     }
@@ -67,7 +71,6 @@ mod thumbnail_engine_proptest;
 pub mod models;
 pub mod commands;
 
-/// Initialize the thumbnail engine with app cache directory
 #[tauri::command]
 async fn init_thumbnail_cache(app_handle: tauri::AppHandle) -> Result<(), String> {
     // Initialize cache directory
@@ -78,22 +81,17 @@ async fn init_thumbnail_cache(app_handle: tauri::AppHandle) -> Result<(), String
     init_thumbnail_engine(cache_dir).await
 }
 
-/// Get thumbnail cache statistics
 #[tauri::command]
 fn get_thumbnail_cache_stats() -> serde_json::Value {
     get_cache_stats()
 }
 
-/// Clear thumbnail cache for a specific video
 #[tauri::command]
 async fn clear_thumbnail_cache(video_path: String) {
     clear_video_thumbnail_cache(&video_path).await;
 }
 
-/// Extract poster frame at 10% mark of clip duration
-/// 
-/// Extract poster frame using native decoder directly (bypasses queue system)
-/// Returns base64-encoded WebP data URL for immediate display
+/// Extract poster frame at 10% mark using native decoder.
 #[tauri::command]
 async fn extract_poster_frame_command(
     video_path: String,
@@ -110,26 +108,28 @@ async fn extract_poster_frame_command(
         duration * 0.1
     };
     
-    // Base thumbnail long/short edge
-    let long_edge: u32 = if dpr >= 1.5 { 320 } else { 160 };
-    let short_edge: u32 = if dpr >= 1.5 { 180 } else { 90 };
+    // Target max dimension for longest edge
+    let max_size: u32 = if dpr >= 1.5 { 320 } else { 160 };
     
     let decoder_arc = get_decoder(&video_path).await?;
     let (rgba_bytes, out_w, out_h) = {
         let mut decoder = decoder_arc.lock().await;
-        let rotation = decoder.rotation();
         
-        // For portrait videos (90°/270°), request portrait dimensions.
-        // decode_frame handles the rotation internally — caller just
-        // specifies the desired output size in display orientation.
-        let (req_w, req_h) = if rotation == 90 || rotation == 270 {
-            (short_edge, long_edge) // portrait: 90×160
-        } else {
-            (long_edge, short_edge) // landscape: 160×90
-        };
+        // Get TRUE display dimensions (respects SAR + rotation)
+        let (display_w, display_h) = decoder.display_dimensions();
         
-        let bytes = decoder.decode_frame(poster_time, req_w, req_h)?;
-        (bytes, req_w, req_h)
+        // Fit display dimensions to max_size (preserving aspect ratio)
+        let (fit_w, fit_h) = fit_dimensions(display_w, display_h, max_size, max_size);
+        
+        eprintln!("[extract_poster] pixels={}×{} SAR={}:{} rot={} display={}×{} target={}×{}", 
+                  decoder.width(), decoder.height(),
+                  decoder.sar().0, decoder.sar().1,
+                  decoder.rotation(), 
+                  display_w, display_h, fit_w, fit_h);
+        
+        // decode_frame will: decode → rotate → scale to target
+        let bytes = decoder.decode_frame(poster_time, fit_w, fit_h)?;
+        (bytes, fit_w, fit_h)
     };
     
     // Encode RGBA to WebP
@@ -150,7 +150,6 @@ async fn extract_poster_frame_command(
 
 use thumbnail_engine::{ResolutionTier, GLOBAL_CACHE};
 
-/// Encode RGBA bytes to WebP and save to cache
 async fn save_rgba_as_webp(
     rgba_bytes: &[u8],
     width: u32,
@@ -183,13 +182,25 @@ async fn save_rgba_as_webp(
     Ok(())
 }
 
-/// Extract a single frame using the native decoder (fast path)
-/// Returns base64-encoded RGBA data URL for immediate display (no compression blocking)
-/// 
-/// **Request Deduplication:**
-/// Fast scrubbing can queue duplicate requests (1.000s, 1.001s, 1.002s).
-/// This function deduplicates them by sharing the result of the first extraction.
-/// Reduces extraction workload by 70%+ during fast scrubbing.
+fn encode_rgba_to_webp_data_url(
+    rgba_bytes: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    use image::codecs::webp::WebPEncoder;
+    
+    // Encode RGBA to WebP
+    let mut webp_data = Vec::new();
+    let encoder = WebPEncoder::new_lossless(&mut webp_data);
+    encoder.encode(rgba_bytes, width, height, image::ExtendedColorType::Rgba8)
+        .map_err(|e| format!("WebP encoding failed: {}", e))?;
+    
+    // Encode to base64 data URL
+    let base64_data = BASE64.encode(&webp_data);
+    Ok(format!("data:image/webp;base64,{}", base64_data))
+}
+
+/// Extract single frame with deduplication (reduces workload by 70%+ during scrubbing).
 #[tauri::command]
 async fn decode_frame(
     video_path: String,
@@ -254,14 +265,7 @@ async fn decode_frame(
     }
 }
 
-/// Extract a single frame using the native decoder (GPU-optimized path)
-/// Returns raw RGBA bytes for direct GPU upload (no encoding overhead)
-/// 
-/// **GPU-Centric Architecture:**
-/// - Returns raw RGBA bytes (no base64 encoding)
-/// - Frontend uploads to GPU texture once
-/// - Texture reused forever (no re-upload)
-/// - 5-10× faster than base64 path
+/// Extract single frame for GPU upload (returns raw RGBA, 5-10× faster than base64).
 #[tauri::command]
 async fn decode_frame_gpu(
     video_path: String,
@@ -315,14 +319,7 @@ async fn decode_frame_gpu(
     result
 }
 
-/// Extract multiple frames using the native decoder with streaming
-/// Uses tile-based atlas system for efficient storage (32 thumbnails per sprite sheet)
-/// 
-/// Performance architecture:
-/// - Immediate path: decode → RGBA → base64 → frontend (3-15ms, no compression)
-/// - Background path: RGBA → WebP atlas → disk (non-blocking persistence)
-/// 
-/// This ensures timeline scrubbing never blocks on image compression.
+/// Extract multiple frames with streaming and atlas-based storage.
 #[tauri::command]
 async fn decode_frames_streaming(
     video_path: String,
@@ -359,7 +356,24 @@ async fn decode_frames_streaming(
         let manager = atlas_manager.read().await;
         for &time in &timestamps {
             if let Some(location) = manager.get_location(time) {
-                // Frame exists in atlas - send immediately
+                let (display_w, display_h) = {
+                    let decoder_guard = get_decoder(&video_path).await.map_err(|e| e.to_string())?;
+                    let guard = decoder_guard.lock().await;
+                    guard.display_dimensions()
+                };
+                
+                let display_aspect = display_w as f64 / display_h as f64;
+                let target_aspect = width as f64 / height as f64;
+                
+                let (actual_width, actual_height) = if (display_aspect - target_aspect).abs() < 0.01 {
+                    (width, height)
+                } else {
+                    let scale = (width as f64 / display_w as f64).min(height as f64 / display_h as f64);
+                    let w = (display_w as f64 * scale).round() as u32;
+                    let h = (display_h as f64 * scale).round() as u32;
+                    (w.max(1), h.max(1))
+                };
+                
                 let tile = ThumbnailTile::from_atlas(
                     time,
                     location.atlas_path.to_string_lossy().to_string(),
@@ -368,6 +382,8 @@ async fn decode_frames_streaming(
                     location.row,
                     width,
                     height,
+                    actual_width,
+                    actual_height,
                 );
                 
                 match on_tile.send(tile) {
@@ -425,7 +441,7 @@ async fn decode_frames_streaming(
             
             // Create atlas builder for background persistence
             let mut atlas_builder = AtlasBuilder::new(width, height);
-            let mut chunk_frames: Vec<(f64, Vec<u8>)> = Vec::new();
+            let mut chunk_frames: Vec<(f64, Vec<u8>, u32, u32)> = Vec::new();
             
             // IMMEDIATE PATH: Decode and stream RGBA to frontend (no compression!)
             for &time in chunk {
@@ -490,17 +506,25 @@ async fn decode_frames_streaming(
 
                 let decode_time = decode_start.elapsed();
                 
-                // IMMEDIATE: Send raw RGBA as base64 to frontend (no WebP encoding!)
-                let base64_data = BASE64.encode(&rgba_bytes);
-                let rgba_data_url = format!("data:image/rgba;base64,{}", base64_data);
+                let actual_width = (rgba_bytes.len() / 4 / height as usize) as u32;
+                let actual_height = height;
                 
-                let tile = ThumbnailTile::from_path(time, rgba_data_url, density);
+                let webp_data_url = match encode_rgba_to_webp_data_url(&rgba_bytes, actual_width, actual_height) {
+                    Ok(url) => url,
+                    Err(e) => {
+                        eprintln!("[decode_frames_streaming] WebP encoding failed at {}s: {}", time, e);
+                        frames_failed += 1;
+                        continue;
+                    }
+                };
+                
+                let tile = ThumbnailTile::from_path(time, webp_data_url, density);
                 
                 match on_tile.send(tile) {
                     Ok(_) => {
                         frames_sent += 1;
                         if frames_sent <= 3 || frames_sent % 20 == 0 {
-                            eprintln!("[STREAM] Sent RGBA tile #{}/{}: time={:.2}s decode={:?} (NO COMPRESSION)", 
+                            eprintln!("[STREAM] Sent WebP tile #{}/{}: time={:.2}s decode={:?}", 
                                       frames_sent, total_frames, time, decode_time);
                         }
                     }
@@ -509,8 +533,7 @@ async fn decode_frames_streaming(
                     }
                 }
                 
-                // Save RGBA for background atlas persistence
-                chunk_frames.push((time, rgba_bytes));
+                chunk_frames.push((time, rgba_bytes, actual_width, actual_height));
                 frames_decoded += 1;
             }
             
@@ -525,21 +548,20 @@ async fn decode_frames_streaming(
             let mut locations = Vec::new();
             {
                 let mut manager = atlas_manager.write().await;
-                for (time, rgba_bytes) in &chunk_frames {
+                for (time, rgba_bytes, actual_width, actual_height) in &chunk_frames {
                     let location = manager.allocate(*time);
                     
-                    // Add thumbnail to atlas
-                    if let Err(e) = atlas_builder.add_thumbnail(rgba_bytes) {
+                    if let Err(e) = atlas_builder.add_thumbnail(rgba_bytes, *actual_width, *actual_height) {
                         eprintln!("[decode_frames_streaming] Failed to add thumbnail to atlas: {}", e);
                         continue;
                     }
                     
-                    locations.push((*time, location));
+                    locations.push((*time, location, *actual_width, *actual_height));
                 }
             }
             
             // Save atlas to disk (background persistence)
-            if let Some((_, first_location)) = locations.first() {
+            if let Some((_, first_location, _, _)) = locations.first() {
                 if let Err(e) = atlas_builder.save(&first_location.atlas_path).await {
                     eprintln!("[decode_frames_streaming] Failed to save atlas: {}", e);
                 } else {
@@ -567,8 +589,6 @@ async fn decode_frames_streaming(
     Ok(())
 }
 
-/// Release the native decoder for a video to free memory
-/// Call this when a clip is removed from the project
 #[tauri::command]
 fn release_video_decoder(video_path: String) {
     release_decoder(&video_path);

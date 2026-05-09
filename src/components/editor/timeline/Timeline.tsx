@@ -35,11 +35,7 @@ function normalizeWheelDeltaY(e: WheelEvent, viewportClientHeight: number): numb
 }
 
 /** Map viewport Y to a track using each row's DOM rect (ruler / flex centering safe). */
-function resolveTrackAtClientY(
-  container: HTMLElement,
-  tracks: Array<{ id: string }>,
-  clientY: number,
-): { targetTrackId: string | null; willCreateNewTrack: boolean; newTrackPosition: "above" | "below" | null } {
+function resolveTrackAtClientY(container: HTMLElement, tracks: Array<{ id: string }>, clientY: number): { targetTrackId: string | null; willCreateNewTrack: boolean; newTrackPosition: "above" | "below" | null } {
   if (tracks.length === 0) {
     return { targetTrackId: null, willCreateNewTrack: true, newTrackPosition: "below" };
   }
@@ -471,6 +467,61 @@ export const Timeline: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [normalizeTrack, updateClip]);
 
+  // Handle Delete/Backspace key to remove selected clips
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle Delete or Backspace
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+
+      // Don't delete if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return;
+      }
+
+      const { selectedClipIds } = useUIStore.getState();
+      if (selectedClipIds.length === 0) return;
+
+      // Prevent deleting all clips from main track
+      const store = useTimelineStore.getState();
+      const mainTrackId = store.mainVideoTrackId;
+
+      if (mainTrackId) {
+        const mainClipIds = store.clips.filter((c) => c.trackId === mainTrackId).map((c) => c.id);
+        const deletingFromMain = selectedClipIds.filter((id) => mainClipIds.includes(id));
+        const wouldEmptyMain = mainClipIds.length > 0 && deletingFromMain.length === mainClipIds.length;
+
+        if (wouldEmptyMain) {
+          console.log("[TIMELINE] 🚫 Cannot delete all clips from main track");
+          return;
+        }
+      }
+
+      console.log("[TIMELINE] 🗑️ Deleting clips", { selectedClipIds });
+
+      // Remove each selected clip
+      const { removeClip, normalizeTrack } = useTimelineStore.getState();
+      const affectedTracks = new Set<string>();
+
+      selectedClipIds.forEach((clipId) => {
+        const clip = store.clips.find((c) => c.id === clipId);
+        if (clip) {
+          affectedTracks.add(clip.trackId);
+          removeClip(clipId);
+        }
+      });
+
+      // Normalize affected tracks to close gaps
+      affectedTracks.forEach((trackId) => normalizeTrack(trackId));
+
+      // Clear selection after deletion
+      useUIStore.getState().clearSelection();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Clicking anywhere that is not a clip clears clip selection.
   useEffect(() => {
     const handleWindowPointerDown = (event: PointerEvent) => {
@@ -871,15 +922,15 @@ export const Timeline: React.FC = () => {
                     dragState={
                       dragState
                         ? {
-                          draggingClipId: dragState.draggingClipId,
-                          offsetX: dragState.offsetX,
-                          offsetY: dragState.offsetY,
-                          isInvalidPosition: dragState.isInvalidPosition,
-                          targetTrackId: dragState.targetTrackId,
-                          insertionIndex: dragState.insertionIndex,
-                          gapStartTime: dragState.gapStartTime,
-                          gapDuration: dragState.gapDuration,
-                        }
+                            draggingClipId: dragState.draggingClipId,
+                            offsetX: dragState.offsetX,
+                            offsetY: dragState.offsetY,
+                            isInvalidPosition: dragState.isInvalidPosition,
+                            targetTrackId: dragState.targetTrackId,
+                            insertionIndex: dragState.insertionIndex,
+                            gapStartTime: dragState.gapStartTime,
+                            gapDuration: dragState.gapDuration,
+                          }
                         : undefined
                     }
                   />

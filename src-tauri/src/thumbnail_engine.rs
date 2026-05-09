@@ -1,11 +1,4 @@
-//! CapCut-style Thumbnail Engine
-//!
-//! Core principle: Multi-resolution cache with async extraction queue
-//! - Three density levels: Low (5s), Medium (1s), High (0.2s)
-//! - Global time-grid sampling for consistent positioning
-//! - Priority-based async extraction (viewport first, then background)
-//! - Tile-based atlas system (32 thumbnails per sprite sheet)
-//! - WebP disk cache with LRU memory cache
+//! Thumbnail engine with multi-resolution cache and atlas-based storage.
 
 pub mod decoder;
 pub mod atlas;
@@ -23,18 +16,12 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, RwLock, Semaphore};
 use web_time::Instant;
 
-/// Errors that can occur during frame extraction
 #[derive(Debug, Clone)]
 pub enum ExtractionError {
-    /// FFmpeg process failed to spawn (retriable with exponential backoff)
     ProcessSpawn(String),
-    /// Video codec not supported or file is corrupted (not retriable)
     CodecError(String),
-    /// Extraction exceeded the timeout limit (retry with lower density)
     Timeout,
-    /// Cache directory not initialized or write failed
     CacheError(String),
-    /// Generic extraction failure
     Other(String),
 }
 
@@ -50,46 +37,39 @@ impl fmt::Display for ExtractionError {
     }
 }
 
-/// Thumbnail tile for streaming results to frontend
-/// Supports both legacy per-frame files and new atlas-based storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThumbnailTile {
-    /// Timestamp in seconds
     pub time: f64,
-    /// Filesystem path to cached thumbnail or atlas
     pub path: String,
-    /// Density level used for this tile
     pub density: DensityLevel,
-    /// Atlas coordinates (if using atlas storage)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub atlas_coords: Option<AtlasCoords>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_height: Option<u32>,
 }
 
-/// Atlas coordinates for extracting thumbnail from sprite sheet
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AtlasCoords {
-    /// Column in atlas (0-7)
     pub col: u32,
-    /// Row in atlas (0-3)
     pub row: u32,
-    /// Thumbnail width in pixels
     pub thumb_width: u32,
-    /// Thumbnail height in pixels
     pub thumb_height: u32,
 }
 
 impl ThumbnailTile {
-    /// Create a legacy per-frame tile
     pub fn from_path(time: f64, path: String, density: DensityLevel) -> Self {
         Self {
             time,
             path,
             density,
             atlas_coords: None,
+            actual_width: None,
+            actual_height: None,
         }
     }
 
-    /// Create an atlas-based tile
     pub fn from_atlas(
         time: f64,
         atlas_path: String,
@@ -98,6 +78,8 @@ impl ThumbnailTile {
         row: u32,
         thumb_width: u32,
         thumb_height: u32,
+        actual_width: u32,
+        actual_height: u32,
     ) -> Self {
         Self {
             time,
@@ -109,21 +91,19 @@ impl ThumbnailTile {
                 thumb_width,
                 thumb_height,
             }),
+            actual_width: Some(actual_width),
+            actual_height: Some(actual_height),
         }
     }
 }
 
-/// Resolution tier for high-DPI displays
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ResolutionTier {
-    /// Standard resolution: 80x60px (DPR 1.0-1.4)
     Tier1x,
-    /// High resolution: 160x120px (DPR 1.5+)
     Tier2x,
 }
 
 impl ResolutionTier {
-    /// Map device pixel ratio to resolution tier
     pub fn from_dpr(dpr: f64) -> Self {
         if dpr >= 1.5 {
             ResolutionTier::Tier2x
@@ -132,7 +112,6 @@ impl ResolutionTier {
         }
     }
 
-    /// Get thumbnail dimensions for this tier
     pub fn dimensions(&self) -> (u32, u32) {
         match self {
             ResolutionTier::Tier1x => (80, 60),
@@ -140,7 +119,6 @@ impl ResolutionTier {
         }
     }
 
-    /// Get string label for this tier
     pub fn label(&self) -> &'static str {
         match self {
             ResolutionTier::Tier1x => "1x",
@@ -148,7 +126,6 @@ impl ResolutionTier {
         }
     }
 
-    /// Parse resolution tier from label string
     pub fn from_label(label: &str) -> Result<Self, String> {
         match label {
             "1x" => Ok(ResolutionTier::Tier1x),
@@ -158,21 +135,15 @@ impl ResolutionTier {
     }
 }
 
-/// Cache key for thumbnail lookups (zoom-invariant)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CacheKey {
-    /// Video identifier (MD5 hash of path)
     pub video_id: String,
-    /// Timestamp in milliseconds
     pub timestamp_ms: u64,
-    /// Density level
     pub density: DensityLevel,
-    /// Resolution tier
     pub resolution_tier: ResolutionTier,
 }
 
 impl CacheKey {
-    /// Create a new cache key
     pub fn new(video_path: &str, time: f64, density: DensityLevel, dpr: f64) -> Self {
         let video_id = format!("{:x}", md5::compute(video_path));
         let timestamp_ms = (time * 1000.0).round() as u64;
@@ -186,7 +157,6 @@ impl CacheKey {
         }
     }
 
-    /// Convert cache key to string format: {video_id}:{timestamp_ms}:{density_label}:{resolution_tier}
     pub fn to_string(&self) -> String {
         format!(
             "{}:{}:{}:{}",
@@ -197,7 +167,6 @@ impl CacheKey {
         )
     }
 
-    /// Parse cache key from string format
     pub fn from_string(s: &str) -> Result<Self, String> {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 4 {
@@ -215,22 +184,16 @@ impl CacheKey {
     }
 }
 
-/// Thumbnail density levels (time intervals)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DensityLevel {
-    /// Low density: one frame every 5 seconds (zoomed out)
     Low = 0,
-    /// Medium density: one frame every 1 second (normal view)
     Medium = 1,
-    /// High density: one frame every 0.2 seconds (zoomed in)
     High = 2,
-    /// Ultra density: one frame every 0.02 seconds (max zoom)
     Ultra = 3,
 }
 
 impl DensityLevel {
-    /// Time interval in seconds for this density level
     pub fn time_interval(&self) -> f64 {
         match self {
             DensityLevel::Low => 5.0,
@@ -240,7 +203,6 @@ impl DensityLevel {
         }
     }
 
-    /// Get string label for this density level
     pub fn label(&self) -> &'static str {
         match self {
             DensityLevel::Low => "low",
@@ -261,10 +223,8 @@ impl DensityLevel {
         }
     }
 
-    /// Select appropriate density based on zoom (pixels per second)
-    /// Ultra density kicks in at >4000 px/sec (time_per_thumb < 0.02s)
     pub fn from_zoom(px_per_sec: f64) -> Self {
-        let time_per_thumb = 80.0 / px_per_sec; // 80px thumb width
+        let time_per_thumb = 80.0 / px_per_sec;
 
         if time_per_thumb > 3.0 {
             DensityLevel::Low
@@ -277,7 +237,6 @@ impl DensityLevel {
         }
     }
 
-    /// Get next higher density level if available
     pub fn higher(&self) -> Option<Self> {
         match self {
             DensityLevel::Low => Some(DensityLevel::Medium),
@@ -287,7 +246,6 @@ impl DensityLevel {
         }
     }
 
-    /// Get next lower density level if available
     pub fn lower(&self) -> Option<Self> {
         match self {
             DensityLevel::Ultra => Some(DensityLevel::High),
@@ -298,27 +256,20 @@ impl DensityLevel {
     }
 }
 
-/// Priority for extraction jobs (viewport visibility)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
-    /// Critical: Currently visible in viewport (extract immediately)
     Critical = 0,
-    /// High: Near viewport (1 screen away)
     High = 1,
-    /// Normal: Background prefill
     Normal = 2,
 }
 
-/// A cached thumbnail frame with weighted eviction metadata
 #[derive(Debug)]
 pub struct CachedFrame {
     pub time: f64,
     pub path: PathBuf,
     pub timestamp: Instant,
     pub access_count: AtomicU64,
-    /// Last time this frame was accessed (for recency calculation)
     pub last_access: RwLock<Instant>,
-    /// Whether this frame is currently in the viewport
     pub in_viewport: RwLock<bool>,
 }
 
@@ -336,39 +287,18 @@ impl CachedFrame {
 
     pub fn touch(&self) {
         self.access_count.fetch_add(1, Ordering::Relaxed);
-        // Use try_write to avoid blocking - if we can't get the lock, skip updating last_access
         if let Ok(mut last) = self.last_access.try_write() {
             *last = Instant::now();
         }
     }
 
-    /// Mark frame as in viewport (should be protected from eviction)
     pub async fn set_in_viewport(&self, visible: bool) {
         let mut in_vp = self.in_viewport.write().await;
         *in_vp = visible;
     }
 
-    /// Calculate weighted eviction score (lower = more likely to evict)
-    /// 
-    /// Score formula:
-    /// score = viewport_priority * 10 + recency_weight * 5 + access_frequency * 3 + density_weight * 2
-    /// 
-    /// Where:
-    /// - viewport_priority: 10 if in viewport, 0 otherwise (almost never evict visible frames)
-    /// - recency_weight: 0-10 based on time since last access (0 = old, 10 = recent)
-    /// - access_frequency: 0-10 based on access count (0 = rarely used, 10 = frequently used)
-    /// - density_weight: 0-10 based on density level (Low=10, Medium=7, High=4, Ultra=0)
-    /// 
-    /// This ensures:
-    /// - Visible viewport frames are almost never evicted (score >= 100)
-    /// - Recently accessed frames are protected
-    /// - Frequently accessed frames (looping playback, repeated scrub zones) are protected
-    /// - Lower density frames are preferred for retention (they're cheaper to regenerate)
     pub async fn eviction_score(&self, density: DensityLevel) -> u64 {
-        // Viewport priority: 10 if visible, 0 otherwise
         let viewport_priority = if *self.in_viewport.read().await { 10 } else { 0 };
-
-        // Recency weight: 0-10 based on time since last access
         let last_access_time = *self.last_access.read().await;
         let seconds_since_access = Instant::now().duration_since(last_access_time).as_secs();
         let recency_weight = if seconds_since_access < 5 {
@@ -380,10 +310,9 @@ impl CachedFrame {
         } else if seconds_since_access < 600 {
             2 // Old (< 10min)
         } else {
-            0 // Very old (> 10min)
+            0
         };
 
-        // Access frequency weight: 0-10 based on access count
         let access_count = self.access_count.load(Ordering::Relaxed);
         let access_frequency = if access_count >= 50 {
             10 // Very frequently accessed (looping playback)
@@ -394,37 +323,28 @@ impl CachedFrame {
         } else if access_count >= 5 {
             3 // Occasionally accessed
         } else {
-            0 // Rarely accessed
+            0
         };
 
-        // Density weight: Lower density = higher weight (cheaper to regenerate)
-        // Low density frames are preferred for retention because they're faster to extract
         let density_weight = match density {
-            DensityLevel::Low => 10,    // Keep low density (5s interval, fast to extract)
-            DensityLevel::Medium => 7,  // Keep medium density (1s interval)
-            DensityLevel::High => 4,    // Evict high density first (0.2s interval, expensive)
-            DensityLevel::Ultra => 0,   // Evict ultra density first (0.02s interval, very expensive)
+            DensityLevel::Low => 10,
+            DensityLevel::Medium => 7,
+            DensityLevel::High => 4,
+            DensityLevel::Ultra => 0,
         };
 
-        // Calculate weighted score
         let score = viewport_priority * 10 + recency_weight * 5 + access_frequency * 3 + density_weight * 2;
         
         score
     }
 }
 
-/// Cache for a single video at one density level
 #[derive(Debug)]
 pub struct DensityCache {
-    /// Video ID (hash of path)
     pub video_id: String,
-    /// Density level
     pub density: DensityLevel,
-    /// Frames indexed by time (rounded to milliseconds)
     pub frames: DashMap<u64, CachedFrame>,
-    /// Max size before eviction
     pub max_size: usize,
-    /// Total size in bytes
     pub total_size: AtomicU64,
 }
 
@@ -434,17 +354,15 @@ impl DensityCache {
             video_id,
             density,
             frames: DashMap::new(),
-            max_size: 500, // 500 frames per density
+            max_size: 500,
             total_size: AtomicU64::new(0),
         }
     }
 
-    /// Round time to millisecond precision for key
     fn time_key(time: f64) -> u64 {
         (time * 1000.0).round() as u64
     }
 
-    /// Get frame path if cached
     pub fn get_path(&self, time: f64) -> Option<PathBuf> {
         let key = Self::time_key(time);
         self.frames.get(&key).map(|entry| {
@@ -453,18 +371,14 @@ impl DensityCache {
         })
     }
 
-    /// Insert frame into cache
     pub async fn insert(&self, time: f64, frame: CachedFrame) {
         let key = Self::time_key(time);
         self.frames.insert(key, frame);
         self.evict_if_needed().await;
     }
 
-    /// Evict oldest frames if cache exceeds max size
-    /// Uses weighted eviction scoring to protect viewport frames and frequently accessed frames
     async fn evict_if_needed(&self) {
         if self.frames.len() > self.max_size {
-            // Collect entries with their eviction scores
             let mut scored_entries: Vec<(u64, u64)> = Vec::new();
             
             for entry in self.frames.iter() {
@@ -474,23 +388,18 @@ impl DensityCache {
                 scored_entries.push((time_key, score));
             }
 
-            // Sort by eviction score (ascending) - lowest scores are evicted first
             scored_entries.sort_by_key(|(_, score)| *score);
-
-            // Remove lowest-scoring 20%
             let to_remove = (self.max_size / 5).max(1);
             let mut removed = 0;
             let mut viewport_protected = 0;
 
             for (key, score) in scored_entries.into_iter().take(to_remove) {
-                // Extra protection: never evict frames with score >= 100 (in viewport)
                 if score >= 100 {
                     viewport_protected += 1;
                     continue;
                 }
 
                 if let Some((_, frame)) = self.frames.remove(&key) {
-                    // Decrement global total_size by the file size of the removed frame
                     if let Ok(metadata) = std::fs::metadata(&frame.path) {
                         GLOBAL_CACHE.total_size.fetch_sub(metadata.len(), Ordering::Relaxed);
                     }
@@ -535,27 +444,20 @@ impl VideoCache {
         }
     }
 
-    /// Touch cache to update last accessed time
     pub async fn touch(&self) {
         let mut last = self.last_accessed.write().await;
         *last = Instant::now();
     }
 
-    /// Get best available frame path for a given time
-    /// Returns the path and the density level it came from
     pub fn get_frame_path(&self, time: f64, target_density: DensityLevel) -> Option<(PathBuf, DensityLevel)> {
         self.get_frame_with_fallback(time, target_density)
     }
 
-    /// Get frame with progressive density fallback
-    /// Implements the fallback chain: Ultra → High → Medium → Low
-    /// Returns the path and the actual density level used
     pub fn get_frame_with_fallback(
         &self,
         time: f64,
         target_density: DensityLevel,
     ) -> Option<(PathBuf, DensityLevel)> {
-        // Try target density first
         if let Some(path) = self.get_frame_at_density(time, target_density) {
             return Some((path, target_density));
         }
@@ -569,8 +471,6 @@ impl VideoCache {
             current = higher;
         }
 
-        // Try lower densities (less detail)
-        // Fallback order: High → Medium → Low
         let fallback_order = [
             DensityLevel::High,
             DensityLevel::Medium,
@@ -619,7 +519,6 @@ impl ThumbnailCache {
         }
     }
 
-    /// Initialize cache directory
     pub async fn init_cache_dir(&self, app_cache_dir: PathBuf) -> Result<(), String> {
         let thumb_dir = app_cache_dir.join("thumbnails");
         tokio::fs::create_dir_all(&thumb_dir)
@@ -631,7 +530,6 @@ impl ThumbnailCache {
         Ok(())
     }
 
-    /// Get or create video cache
     pub async fn get_or_create_video(&self, video_path: &str, duration: f64) -> Arc<VideoCache> {
         let video_id = format!("{:x}", md5::compute(video_path));
 
@@ -646,28 +544,13 @@ impl ThumbnailCache {
         cache
     }
 
-    /// Get video cache if exists
     pub fn get_video(&self, video_path: &str) -> Option<Arc<VideoCache>> {
         let video_id = format!("{:x}", md5::compute(video_path));
         self.videos.get(&video_id).map(|e| e.clone())
     }
 
-    /// Evict frames when total cache size exceeds 200MB.
-    ///
-    /// Weighted eviction strategy:
-    /// 1. Check if total_size exceeds 200MB limit
-    /// 2. Calculate weighted eviction score for each frame:
-    ///    score = viewport_priority * 10 + recency_weight * 5 + access_frequency * 3 + density_weight * 2
-    /// 3. Sort by score (ascending) - lowest scores are evicted first
-    /// 4. Remove the lowest-scoring 20% of frames
-    /// 
-    /// This ensures:
-    /// - Visible viewport frames are almost never evicted (score >= 100)
-    /// - Recently accessed frames are protected (looping playback, repeated scrub zones)
-    /// - Frequently accessed frames are protected
-    /// - Ultra/High density frames are evicted before Low/Medium (cheaper to regenerate)
     pub async fn evict_if_needed(&self) {
-        const CACHE_SIZE_LIMIT: u64 = 200 * 1024 * 1024; // 200MB
+        const CACHE_SIZE_LIMIT: u64 = 200 * 1024 * 1024;
 
         let current_size = self.total_size.load(Ordering::Relaxed);
         if current_size <= CACHE_SIZE_LIMIT {
@@ -679,8 +562,6 @@ impl ThumbnailCache {
             current_size / (1024 * 1024)
         );
 
-        // Collect all frames with their eviction scores
-        // Each entry: (video_id, density, time_key, eviction_score, file_path)
         let mut scored_frames: Vec<(String, DensityLevel, u64, u64, PathBuf)> = Vec::new();
 
         for video_entry in self.videos.iter() {
@@ -694,7 +575,6 @@ impl ThumbnailCache {
                     let path = frame.path.clone();
                     let vid_id = video_cache.video_id.clone();
 
-                    // Calculate weighted eviction score
                     let score = frame.eviction_score(density).await;
 
                     scored_frames.push((vid_id, density, time_key, score, path));
@@ -702,10 +582,7 @@ impl ThumbnailCache {
             }
         }
 
-        // Sort by eviction score (ascending) - lowest scores are evicted first
         scored_frames.sort_by_key(|(_, _, _, score, _)| *score);
-
-        // Calculate how many frames to remove (20%)
         let total_frames = scored_frames.len();
         let to_remove = ((total_frames / 5).max(1)).min(total_frames);
 
@@ -715,7 +592,6 @@ impl ThumbnailCache {
             total_frames
         );
 
-        // Log score distribution for debugging
         if !scored_frames.is_empty() {
             let lowest_score = scored_frames.first().map(|(_, _, _, s, _)| *s).unwrap_or(0);
             let highest_score = scored_frames.last().map(|(_, _, _, s, _)| *s).unwrap_or(0);
@@ -726,22 +602,18 @@ impl ThumbnailCache {
             );
         }
 
-        // Evict lowest-scoring frames
         let mut removed = 0;
         let mut viewport_protected = 0;
 
         for (vid_id, density, time_key, score, file_path) in scored_frames.into_iter().take(to_remove) {
-            // Extra protection: never evict frames with score >= 100 (in viewport)
             if score >= 100 {
                 viewport_protected += 1;
                 continue;
             }
 
-            // Remove from the in-memory cache
             if let Some(video_entry) = self.videos.get(&vid_id) {
                 if let Some(level_cache) = video_entry.levels.get(&density) {
                     if level_cache.frames.remove(&time_key).is_some() {
-                        // Decrement total_size by the file size
                         if let Ok(metadata) = std::fs::metadata(&file_path) {
                             self.total_size.fetch_sub(metadata.len(), Ordering::Relaxed);
                         }
@@ -759,12 +631,10 @@ impl ThumbnailCache {
         );
     }
 
-    /// Get cache directory path
     pub async fn cache_dir(&self) -> Option<PathBuf> {
         self.cache_dir.read().await.clone()
     }
 
-    /// Generate cache path for a frame
     pub async fn frame_path(
         &self,
         video_id: &str,
@@ -781,7 +651,6 @@ impl ThumbnailCache {
         })
     }
 
-    /// Clear all caches
     pub async fn clear(&self) {
         self.videos.clear();
     }
@@ -805,15 +674,12 @@ pub struct ExtractionJob {
 }
 
 impl ExtractionJob {
-    /// Check if this job has been cancelled
     fn is_cancelled(&self) -> bool {
         let timestamp_key = (self.time * 1000.0).round() as u64;
         
-        // Check if this timestamp is still in the active request set
         if let Some(entry) = ACTIVE_TRACKER.active_requests.get(&self.video_id) {
             !entry.value().contains(&timestamp_key)
         } else {
-            // No active requests for this video means all jobs are cancelled
             true
         }
     }
@@ -833,19 +699,12 @@ pub struct BatchExtractionRequest {
     pub result_tx: oneshot::Sender<Vec<Result<PathBuf, String>>>,
 }
 
-/// Async extraction queue
 #[derive(Debug)]
 pub struct ExtractionQueue {
-    /// Job sender
     job_tx: mpsc::Sender<ExtractionJob>,
-    /// Batch job sender
     batch_tx: mpsc::Sender<BatchExtractionRequest>,
-    /// Concurrency limiter (4 parallel extractions)
     semaphore: Arc<Semaphore>,
 }
-
-/// Wrapper for ExtractionJob that implements Ord by priority (Critical > High > Normal).
-/// Used to order jobs in a BinaryHeap (max-heap), so Critical jobs are processed first.
 pub(crate) struct PrioritizedJob(pub ExtractionJob);
 
 impl PartialEq for PrioritizedJob {
@@ -1074,7 +933,6 @@ impl ExtractionQueue {
         }
     }
 
-    /// Submit a single extraction job
     pub async fn submit(&self, job: ExtractionJob) -> Result<(), String> {
         self.job_tx
             .send(job)
@@ -1082,7 +940,6 @@ impl ExtractionQueue {
             .map_err(|_| "Failed to submit extraction job".to_string())
     }
 
-    /// Submit a batch extraction job
     pub async fn submit_batch(&self, request: BatchExtractionRequest) -> Result<(), String> {
         self.batch_tx
             .send(request)
@@ -1090,7 +947,6 @@ impl ExtractionQueue {
             .map_err(|_| "Failed to submit batch extraction request".to_string())
     }
 
-    /// Extract a single frame (DEPRECATED - use decode_frames_streaming instead)
     async fn extract_single_frame(
         _video_path: &str,
         _time: f64,
@@ -1103,7 +959,6 @@ impl ExtractionQueue {
         Err("extract_single_frame is deprecated - use decode_frames_streaming instead".to_string())
     }
 
-    /// Extract multiple frames in batch (DEPRECATED - use decode_frames_streaming instead)
     async fn extract_batch(
         _video_path: &str,
         _times: &[f64],
@@ -1117,13 +972,9 @@ impl ExtractionQueue {
     }
 }
 
-/// Global singleton extraction queue
 pub static GLOBAL_QUEUE: Lazy<ExtractionQueue> = Lazy::new(ExtractionQueue::new);
-
-/// Active extraction tracker for cancellation support
 #[derive(Debug)]
 pub struct ActiveExtractionTracker {
-    /// Video ID -> Set of active timestamp keys (milliseconds)
     pub(crate) active_requests: DashMap<String, HashSet<u64>>,
 }
 
@@ -1134,7 +985,6 @@ impl ActiveExtractionTracker {
         }
     }
 
-    /// Register a new extraction request for a video
     pub fn register_request(&self, video_id: &str, timestamps: &[f64]) {
         let timestamp_keys: HashSet<u64> = timestamps
             .iter()
@@ -1145,8 +995,6 @@ impl ActiveExtractionTracker {
             .insert(video_id.to_string(), timestamp_keys);
     }
 
-    /// Cancel stale timestamps that are not in the new request
-    /// Returns the list of cancelled timestamp keys (milliseconds)
     pub fn cancel_stale_timestamps(&self, video_id: &str, new_timestamps: &[f64]) -> Vec<u64> {
         let new_keys: HashSet<u64> = new_timestamps
             .iter()
@@ -1158,17 +1006,14 @@ impl ActiveExtractionTracker {
         if let Some(mut entry) = self.active_requests.get_mut(video_id) {
             let old_keys = entry.value().clone();
 
-            // Find timestamps in old request but not in new request
             for old_key in old_keys.iter() {
                 if !new_keys.contains(old_key) {
                     cancelled.push(*old_key);
                 }
             }
 
-            // Update to new timestamp set
             *entry.value_mut() = new_keys;
         } else {
-            // No previous request, just register the new one
             self.active_requests
                 .insert(video_id.to_string(), new_keys);
         }
@@ -1176,21 +1021,16 @@ impl ActiveExtractionTracker {
         cancelled
     }
 
-    /// Clear all active requests for a video
     pub fn clear_video(&self, video_id: &str) {
         self.active_requests.remove(video_id);
     }
 }
 
-/// Global singleton active extraction tracker
 pub static ACTIVE_TRACKER: Lazy<ActiveExtractionTracker> = Lazy::new(ActiveExtractionTracker::new);
-
-/// Public API: Get or create video cache entry
 pub async fn get_video_cache(video_path: &str, duration: f64) -> Arc<VideoCache> {
     GLOBAL_CACHE.get_or_create_video(video_path, duration).await
 }
 
-/// Public API: Request thumbnail extraction
 pub async fn request_thumbnail(
     video_path: &str,
     time: f64,
@@ -1200,7 +1040,6 @@ pub async fn request_thumbnail(
     height: u32,
     dpr: f64,
 ) -> Result<PathBuf, String> {
-    // Check cache first
     let video_id = format!("{:x}", md5::compute(video_path));
     let resolution_tier = ResolutionTier::from_dpr(dpr);
 
@@ -1210,7 +1049,6 @@ pub async fn request_thumbnail(
         }
     }
 
-    // Submit extraction job
     let (tx, rx) = oneshot::channel();
     let job = ExtractionJob {
         video_path: video_path.to_string(),
@@ -1226,12 +1064,10 @@ pub async fn request_thumbnail(
 
     GLOBAL_QUEUE.submit(job).await?;
 
-    // Wait for result
     rx.await
         .map_err(|_| "Extraction channel closed".to_string())?
 }
 
-/// Public API: Request batch thumbnail extraction
 pub async fn request_batch_thumbnails(
     video_path: &str,
     times: Vec<f64>,
@@ -1244,7 +1080,6 @@ pub async fn request_batch_thumbnails(
     let video_id = format!("{:x}", md5::compute(video_path));
     let resolution_tier = ResolutionTier::from_dpr(dpr);
 
-    // Check cache for existing frames
     let mut missing_times = Vec::new();
     let mut cached_results: Vec<Option<Result<PathBuf, String>>> = vec![None; times.len()];
 
@@ -1260,12 +1095,10 @@ pub async fn request_batch_thumbnails(
         missing_times = times.iter().enumerate().map(|(i, t)| (i, *t)).collect();
     }
 
-    // If all cached, return early
     if missing_times.is_empty() {
         return cached_results.into_iter().flatten().collect();
     }
 
-    // Extract missing times
     let (tx, rx) = oneshot::channel();
     let request = BatchExtractionRequest {
         video_path: video_path.to_string(),
@@ -1283,7 +1116,6 @@ pub async fn request_batch_thumbnails(
         return vec![Err(e); times.len()];
     }
 
-    // Wait for results and merge with cached
     match rx.await {
         Ok(batch_results) => {
             for ((orig_idx, _), result) in missing_times.iter().zip(batch_results.iter()) {
@@ -1292,7 +1124,6 @@ pub async fn request_batch_thumbnails(
             cached_results.into_iter().flatten().collect()
         }
         Err(_) => {
-            // Channel closed, return errors for missing
             for (i, _) in missing_times {
                 cached_results[i] = Some(Err("Extraction cancelled".to_string()));
             }

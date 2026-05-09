@@ -5,13 +5,18 @@ interface PlaybackStore {
   currentTime: number;
   duration: number;
   frameRate: number;
-  intervalId: number | null;
+  playbackSpeed: number;
+  audioContext: AudioContext | null;
+  playStartAudioTime: number;
+  playStartTimelineTime: number;
+  rafId: number | null;
   play: () => void;
   pause: () => void;
   stop: () => void;
   seek: (time: number) => void;
   setDuration: (duration: number) => void;
   setFrameRate: (fps: number) => void;
+  setPlaybackSpeed: (speed: number) => void;
 }
 
 export const usePlaybackStore = create<PlaybackStore>((set, get) => ({
@@ -19,60 +24,93 @@ export const usePlaybackStore = create<PlaybackStore>((set, get) => ({
   currentTime: 0,
   duration: 0,
   frameRate: 30,
-  intervalId: null,
+  playbackSpeed: 1.0,
+  audioContext: null,
+  playStartAudioTime: 0,
+  playStartTimelineTime: 0,
+  rafId: null,
 
   play: () => {
     const state = get();
     if (state.isPlaying) return;
 
-    set({ isPlaying: true });
+    // Initialize AudioContext if needed
+    if (!state.audioContext) {
+      set({ audioContext: new AudioContext() });
+    }
 
-    const fps = Math.max(1, state.frameRate);
-    const intervalMs = 1000 / fps;
+    const audioContext = get().audioContext!;
 
-    const intervalId = window.setInterval(() => {
+    // Resume AudioContext if suspended (browser autoplay policy)
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+
+    // Record the start times
+    const playStartAudioTime = audioContext.currentTime;
+    const playStartTimelineTime = state.currentTime;
+
+    set({
+      isPlaying: true,
+      playStartAudioTime,
+      playStartTimelineTime,
+    });
+
+    // Use requestAnimationFrame for smooth updates
+    const updateTime = () => {
       const current = get();
-      const step = 1 / Math.max(1, current.frameRate);
-      const newTime = current.currentTime + step;
+      if (!current.isPlaying) return;
+
+      const audioContext = current.audioContext!;
+      const elapsed = (audioContext.currentTime - current.playStartAudioTime) * current.playbackSpeed;
+      const newTime = current.playStartTimelineTime + elapsed;
 
       if (newTime >= current.duration) {
-        // Pause at the end instead of stopping (which resets to 0)
-        // Clamp to duration to ensure we don't exceed it
-        set({ currentTime: current.duration, isPlaying: false, intervalId: null });
-        if (current.intervalId) {
-          clearInterval(current.intervalId);
-        }
+        // Reached the end
+        set({
+          currentTime: current.duration,
+          isPlaying: false,
+          rafId: null,
+        });
       } else {
         set({ currentTime: newTime });
+        const rafId = requestAnimationFrame(updateTime);
+        set({ rafId });
       }
-    }, intervalMs) as unknown as number;
+    };
 
-    set({ intervalId });
+    const rafId = requestAnimationFrame(updateTime);
+    set({ rafId });
   },
 
   pause: () => {
     const state = get();
-    if (state.intervalId) {
-      clearInterval(state.intervalId);
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
     }
-    set({ isPlaying: false, intervalId: null });
+    set({ isPlaying: false, rafId: null });
   },
 
   stop: () => {
     const state = get();
-    if (state.intervalId) {
-      clearInterval(state.intervalId);
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
     }
-    set({ isPlaying: false, currentTime: 0, intervalId: null });
+    set({ isPlaying: false, currentTime: 0, rafId: null });
   },
 
   seek: (time) => {
     const state = get();
-    if (state.intervalId) {
-      clearInterval(state.intervalId);
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
     }
     const clamped = Math.max(0, Math.min(time, state.duration));
-    set({ currentTime: clamped, isPlaying: false, intervalId: null });
+    set({
+      currentTime: clamped,
+      isPlaying: false,
+      rafId: null,
+      playStartTimelineTime: clamped,
+    });
   },
 
   setDuration: (duration) => {
@@ -80,15 +118,23 @@ export const usePlaybackStore = create<PlaybackStore>((set, get) => ({
   },
 
   setFrameRate: (fps) => {
-    const clamped = Math.max(1, fps);
+    set({ frameRate: Math.max(1, fps) });
+  },
+
+  setPlaybackSpeed: (speed) => {
     const state = get();
-    if (state.intervalId) {
-      clearInterval(state.intervalId);
-    }
     const wasPlaying = state.isPlaying;
-    set({ frameRate: clamped, intervalId: null, isPlaying: false });
+
+    // If playing, pause and restart to apply new speed
     if (wasPlaying) {
-      get().play();
+      state.pause();
+    }
+
+    set({ playbackSpeed: Math.max(0.1, Math.min(4, speed)) });
+
+    if (wasPlaying) {
+      // Small delay to ensure state is updated
+      setTimeout(() => get().play(), 0);
     }
   },
 }));
