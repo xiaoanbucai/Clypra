@@ -594,10 +594,19 @@ export const Timeline: React.FC = () => {
     };
   }, [duration]);
 
-  // ✅ Set playback duration to actual content end (not viewport padding)
+  // ✅ Set playback duration - maintain minimum timeline extent even with no clips
+  // Professional NLE principle: timeline is a persistent temporal coordinate system
   useEffect(() => {
     const contentEnd = getTimelineEndTime();
-    setDuration(contentEnd);
+    // Minimum 10 seconds - timeline exists independently of clips
+    // This allows:
+    // - Playhead to remain valid at any position
+    // - Insert/paste operations at any time
+    // - Markers without clips
+    // - Professional "empty timeline" workflow
+    const MIN_TIMELINE_DURATION = 10;
+    const timelineDuration = Math.max(contentEnd, MIN_TIMELINE_DURATION);
+    setDuration(timelineDuration);
   }, [clips, getTimelineEndTime, setDuration]);
 
   // Auto-scroll during playback: bulletproof viewport tracking with strict invariants

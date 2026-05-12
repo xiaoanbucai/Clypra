@@ -3,6 +3,7 @@ import { Check, Palette, SlidersHorizontal, Info, Paintbrush, RotateCcw, Copy, D
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Modal } from "./Modal";
 import { useSettingsStore, Theme, FontFamily, THEME_META, FONT_META, getThemeColors, getBaseThemeForCustomization, getThemeColorKeys } from "../../store/settingsStore";
+import { useProjectStore } from "../../store/projectStore";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -352,12 +353,36 @@ function AppearanceTab() {
 // ─── Editor Tab ──────────────────────────────────────────────────────────
 function EditorTab() {
   const { snapToGrid, autoRipple, autoSave, defaultFrameRate, setSnapToGrid, setAutoRipple, setAutoSave, setDefaultFrameRate } = useSettingsStore();
+  const { project, updateProject } = useProjectStore();
 
   const frameRates: Array<{ value: 24 | 30 | 60; label: string }> = [
     { value: 24, label: "24" },
     { value: 30, label: "30" },
     { value: 60, label: "60" },
   ];
+
+  const aspectRatios: Array<{ value: string; label: string; dimensions: string }> = [
+    { value: "16:9", label: "16:9", dimensions: "1920×1080" },
+    { value: "9:16", label: "9:16", dimensions: "1080×1920" },
+    { value: "1:1", label: "1:1", dimensions: "1080×1080" },
+    { value: "4:3", label: "4:3", dimensions: "1440×1080" },
+    { value: "21:9", label: "21:9", dimensions: "2520×1080" },
+  ];
+
+  const handleAspectRatioChange = (aspectRatio: string) => {
+    if (!project) return;
+
+    const dims = aspectRatios.find((ar) => ar.value === aspectRatio);
+    if (!dims) return;
+
+    const [width, height] = dims.dimensions.split("×").map(Number);
+
+    updateProject({
+      aspectRatio: aspectRatio as any,
+      canvasWidth: width,
+      canvasHeight: height,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -373,8 +398,40 @@ function EditorTab() {
         </div>
       </section>
 
+      {project && (
+        <section>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-3">Sequence Settings</h3>
+          <div className="space-y-3">
+            <SettingRow label="Aspect ratio" description="Canvas dimensions for export">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex rounded-lg overflow-hidden border border-white/6">
+                  {aspectRatios.map((ar) => (
+                    <button key={ar.value} onClick={() => handleAspectRatioChange(ar.value)} className={`px-3 py-1 text-[11px] font-semibold transition-colors ${project.aspectRatio === ar.value ? "bg-accent text-white" : "bg-surface-raised text-text-muted hover:text-text-primary hover:bg-white/6"}`}>
+                      {ar.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[10px] text-text-muted text-right">
+                  {project.canvasWidth}×{project.canvasHeight}px
+                </div>
+              </div>
+            </SettingRow>
+            <SettingRow label="Frame rate" description="Frames per second for this project">
+              <div className="flex rounded-lg overflow-hidden border border-white/6">
+                {frameRates.map((fr) => (
+                  <button key={fr.value} onClick={() => updateProject({ frameRate: fr.value })} className={`px-3 py-1 text-[11px] font-semibold transition-colors ${project.frameRate === fr.value ? "bg-accent text-white" : "bg-surface-raised text-text-muted hover:text-text-primary hover:bg-white/6"}`}>
+                    {fr.label}
+                  </button>
+                ))}
+                <span className="px-2 py-1 text-[10px] text-text-muted bg-surface-raised flex items-center">fps</span>
+              </div>
+            </SettingRow>
+          </div>
+        </section>
+      )}
+
       <section>
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-3">Project</h3>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-3">Defaults</h3>
         <div className="space-y-3">
           <SettingRow label="Auto-save" description="Periodically save project state">
             <ToggleSwitch checked={autoSave} onChange={setAutoSave} />

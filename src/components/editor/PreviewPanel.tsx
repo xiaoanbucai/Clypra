@@ -60,13 +60,26 @@ function previewAspectWidthOverHeight(preset: PreviewAspectPreset, canvasWidth: 
   return PREVIEW_ASPECT_RATIO[preset] ?? canvasWidth / ch;
 }
 
+/**
+ * Resolve aspect ratio for "Original" preview mode.
+ *
+ * IMPORTANT: In professional NLEs, "Original" means the SEQUENCE aspect ratio,
+ * NOT the source media aspect ratio. The sequence defines the render universe.
+ *
+ * The program monitor always visualizes sequence space, never adapts to clips.
+ * This maintains stability for:
+ * - Overlays and graphics
+ * - Text positioning
+ * - Motion graphics
+ * - Transitions
+ * - Export consistency
+ *
+ * If users want to see source media aspect ratio, they should use Source Preview mode.
+ */
 function resolveOriginalPreviewAspect(layers: readonly { mediaId: string }[], mediaAssets: Array<{ id: string; width?: number; height?: number }>, canvasWidth: number, canvasHeight: number): number {
-  const projectRatio = canvasWidth / Math.max(1, canvasHeight);
-  if (layers.length !== 1) return projectRatio;
-  const onlyLayer = layers[0];
-  const asset = mediaAssets.find((a) => a.id === onlyLayer.mediaId);
-  if (!asset?.width || !asset?.height || asset.width <= 0 || asset.height <= 0) return projectRatio;
-  return asset.width / asset.height;
+  // Always return sequence aspect ratio
+  // The sequence is the coordinate universe - it doesn't change based on clips
+  return canvasWidth / Math.max(1, canvasHeight);
 }
 
 /** Largest rectangle with aspect W/H = R inside the panel. */
