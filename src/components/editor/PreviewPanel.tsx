@@ -149,8 +149,11 @@ const ProgramPreview: React.FC = () => {
   const { play, pause, seek, setSpeed, setDuration, setFrameRate } = usePlaybackControls();
   const clock = getPlaybackClock();
 
-  const { project, mediaAssets } = useProjectStore();
-  const { tracks, clips, epoch } = useTimelineStore();
+  const project = useProjectStore((s) => s.project);
+  const mediaAssets = useProjectStore((s) => s.mediaAssets);
+  const tracks = useTimelineStore((s) => s.tracks);
+  const clips = useTimelineStore((s) => s.clips);
+  const epoch = useTimelineStore((s) => s.epoch);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
@@ -177,6 +180,10 @@ const ProgramPreview: React.FC = () => {
     droppedFrames: number;
     driftMagnitude: number;
   } | null>(null);
+  const telemetryRef = useRef(telemetryStats);
+  const lastTelemetryFlushRef = useRef(0);
+  const showTelemetryRef = useRef(showTelemetry);
+  showTelemetryRef.current = showTelemetry;
 
   const droppedFramesRef = useRef(0);
   const maxDriftRef = useRef(0);
@@ -313,6 +320,7 @@ const ProgramPreview: React.FC = () => {
     let rafId: number | null = null;
     let isActive = true;
     let isRendering = false;
+    let lastJobId: string | null = null;
 
     // Independent render loop (reads clock imperatively)
     const renderLoop = () => {
@@ -329,6 +337,11 @@ const ProgramPreview: React.FC = () => {
 
       isRendering = true;
       const timeToRender = clock.time;
+
+      // Cancel previous job if still pending to prevent queue buildup
+      if (lastJobId) {
+        scheduler.cancel(lastJobId);
+      }
 
       // Build map of active video elements to bypass resource decoding
       const activeVideoElements = new Map<string, HTMLVideoElement>();
@@ -350,6 +363,7 @@ const ProgramPreview: React.FC = () => {
         priority: "realtime",
         videoElements: activeVideoElements,
       });
+      lastJobId = jobId;
 
       scheduler
         .wait(jobId)
@@ -366,9 +380,9 @@ const ProgramPreview: React.FC = () => {
             }
           }
 
-          // Update telemetry
+          // Update telemetry (throttled to 4fps, only when visible)
           const stats = scheduler.getStats();
-          setTelemetryStats({
+          telemetryRef.current = {
             avgEvaluationTimeMs: stats.avgEvaluationTimeMs,
             avgRasterTimeMs: stats.avgRasterTimeMs,
             avgTotalTimeMs: stats.avgTotalTimeMs,
@@ -376,8 +390,13 @@ const ProgramPreview: React.FC = () => {
             active: stats.active,
             droppedFrames: droppedFramesRef.current,
             driftMagnitude: maxDriftRef.current,
-          });
-          maxDriftRef.current = 0; // Reset after reporting
+          };
+          const now = performance.now();
+          if (showTelemetryRef.current && now - lastTelemetryFlushRef.current > 250) {
+            lastTelemetryFlushRef.current = now;
+            setTelemetryStats(telemetryRef.current);
+            maxDriftRef.current = 0;
+          }
         })
         .catch((error: Error) => {
           isRendering = false;
@@ -395,6 +414,9 @@ const ProgramPreview: React.FC = () => {
       isActive = false;
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
+      }
+      if (lastJobId) {
+        scheduler.cancel(lastJobId);
       }
     };
   }, [useCanvasPreview, clips, tracks, mediaAssets, project, epoch, clock, displayWidth, displayHeight]);
@@ -475,67 +497,58 @@ const ProgramPreview: React.FC = () => {
     };
   }, [clockState.state, isMuted, volume, clockState.speed, clips, clock, previewVideoReadyTick, scene.metadata.activeMediaHash]);
 
-  // Periodic drift correction (low frequency, not every frame)
+  // Continuous drift correction via RAF (replaces 250ms interval for frame-accurate sync)
   useEffect(() => {
     if (clockState.state !== "playing") return;
 
-    const interval = setInterval(() => {
-      const currentClockTime = clock.time;
+    let rafId: number | null = null;
+
+    const syncLoop = () => {
+      const currentClockTime = clock.time; // Fresh time every frame
 
       Object.values(videoRefs.current).forEach((video) => {
         if (!video) return;
 
-        // Find the clip for this video
         const clipId = video.dataset.clipId;
         const clip = clips.find((c) => c.id === clipId);
         if (!clip) return;
 
-        // Calculate source time based on clock time
         const clipLocalTime = currentClockTime - clip.startTime;
         if (clipLocalTime < 0 || clipLocalTime > clip.duration) {
-          // Video is outside clip bounds, pause it
-          if (!video.paused) {
-            video.pause();
-          }
+          if (!video.paused) video.pause();
           return;
         }
 
-        // Calculate source time (accounting for trim)
-        const trimIn = clip.trimIn || 0; // Default to 0 if undefined
+        const trimIn = clip.trimIn || 0;
         const sourceTime = trimIn + clipLocalTime;
 
-        // readyState >= 3 means HAVE_FUTURE_DATA (can play smoothly)
         if (Number.isFinite(video.duration) && video.duration > 0 && video.readyState >= 3) {
           const targetTime = Math.max(0, Math.min(sourceTime, Math.max(0, video.duration - 0.01)));
           const drift = Math.abs(video.currentTime - targetTime);
 
           maxDriftRef.current = Math.max(maxDriftRef.current, drift);
 
-          // Add DOM-level preservesPitch to prevent crackling on speed changes
           if ("preservesPitch" in video) {
             (video as any).preservesPitch = false;
           }
 
           if (drift < 0.1) {
-            // 100ms tolerance for natural jitter
-            // <100ms: Ignore, perfect sync
+            // <100ms: Perfect sync — just ensure correct playbackRate
             if (Math.abs(video.playbackRate - clockState.speed) > 0.01) {
               video.playbackRate = clockState.speed;
             }
-          } else if (drift >= 0.1 && drift <= 0.3) {
-            // 100ms - 300ms: Soft playbackRate correction (2% instead of 5%)
+          } else if (drift <= 0.3) {
+            // 100ms - 300ms: Soft playbackRate correction
             const correctionSpeed = video.currentTime < targetTime ? clockState.speed * 1.02 : clockState.speed * 0.98;
             if (Math.abs(video.playbackRate - correctionSpeed) > 0.01) {
               video.playbackRate = correctionSpeed;
             }
-          } else if (drift > 0.3 && drift <= 0.6) {
+          } else if (drift <= 0.6) {
             // 300ms - 600ms: Hard seek
-            console.warn("[PreviewPanel] Hard seek drift correction", { drift: drift.toFixed(3), targetTime });
             video.currentTime = targetTime;
             video.playbackRate = clockState.speed;
-          } else if (drift > 0.6) {
+          } else {
             // >600ms: Playback recovery reset
-            console.warn("[PreviewPanel] Playback recovery reset", { drift: drift.toFixed(3), targetTime });
             video.pause();
             video.currentTime = targetTime;
             video.playbackRate = clockState.speed;
@@ -544,10 +557,15 @@ const ProgramPreview: React.FC = () => {
           }
         }
       });
-    }, 250); // Check every 250ms
 
-    return () => clearInterval(interval);
-  }, [clockState.state, clips, clock]);
+      rafId = requestAnimationFrame(syncLoop);
+    };
+
+    rafId = requestAnimationFrame(syncLoop);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [clockState.state, clockState.speed, clips, clock]);
 
   if (!project) return null;
 

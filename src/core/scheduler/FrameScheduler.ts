@@ -52,6 +52,9 @@ export interface FrameJob {
   /** Cancellation token */
   cancelled: boolean;
 
+  /** AbortController for async pipeline cancellation */
+  abortController: AbortController;
+
   /** Timestamps */
   createdAt: number;
   startedAt?: number;
@@ -167,6 +170,7 @@ export class FrameScheduler {
       status: "pending",
       progress: 0,
       cancelled: false,
+      abortController: new AbortController(),
       createdAt: Date.now(),
       metrics: {},
     };
@@ -194,6 +198,7 @@ export class FrameScheduler {
     if (job && !job.cancelled) {
       job.cancelled = true;
       job.status = "cancelled";
+      job.abortController.abort();
       this.stats.cancelledJobs++;
     }
   }
@@ -528,19 +533,20 @@ export class FrameScheduler {
         // For images, use "image-bitmap". For videos without elements, use "video-element"
         const type = layer.mediaType === "video" ? "video-element" : "image-bitmap";
 
-        const loadPromise = resourceManager
-          .acquire(layer.sourcePath, type)
-          .then((handle) => {
-            // Store handle in layer for rasterizer to use
-            // Note: We can't mutate the layer here, but the resource is now cached
-            // The rasterizer will use the cached resource via the resource manager
-          })
-          .catch((error) => {
-            // Log but don't fail - rasterizer will handle missing resources
-            if (this.config.debug) {
-              console.warn(`Failed to pre-load resource: ${layer.sourcePath}`, error);
-            }
-          });
+        const loadPromise = Promise.race([
+          resourceManager.acquire(layer.sourcePath, type).then(() => {
+            // Resource is now cached; rasterizer will use it via resource manager
+          }),
+          new Promise<void>((_, reject) => {
+            job.abortController.signal.addEventListener("abort", () => reject(new Error("Job cancelled")), { once: true });
+            if (job.abortController.signal.aborted) reject(new Error("Job cancelled"));
+          }),
+        ]).catch((error) => {
+          // Log non-cancellation errors; cancellation is expected
+          if (!job.cancelled && this.config.debug) {
+            console.warn(`Failed to pre-load resource: ${layer.sourcePath}`, error);
+          }
+        });
 
         loadPromises.push(loadPromise);
       }
@@ -603,11 +609,12 @@ export function getFrameScheduler(): FrameScheduler {
 }
 
 /**
- * Reset global frame scheduler (for testing).
+ * Reset global frame scheduler.
+ * Fully disposes the current instance including cancelling all jobs and clearing state.
  */
 export function resetFrameScheduler(): void {
   if (globalScheduler) {
-    globalScheduler.cancelAll();
+    globalScheduler.dispose();
   }
   globalScheduler = null;
 }

@@ -123,10 +123,6 @@ export const useTimelineStore = create<TimelineStore>(
         tracks: [...state.tracks, newTrack],
         mainVideoTrackId: state.mainVideoTrackId ?? (type === "video" ? newTrack.id : null),
       }));
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     insertTrackAt: (type, index) => {
@@ -149,9 +145,6 @@ export const useTimelineStore = create<TimelineStore>(
           mainVideoTrackId: state.mainVideoTrackId ?? (type === "video" ? newTrack.id : null),
         };
       });
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
       return id;
     },
 
@@ -160,10 +153,6 @@ export const useTimelineStore = create<TimelineStore>(
         tracks: state.tracks.filter((t) => t.id !== trackId),
         clips: state.clips.filter((c) => c.trackId !== trackId),
       }));
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     toggleTrackLock: (trackId) => {
@@ -188,40 +177,27 @@ export const useTimelineStore = create<TimelineStore>(
       set((state) => ({
         clips: [...state.clips, clip],
       }));
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     removeClip: (clipId) => {
       set((state) => ({
         clips: state.clips.filter((c) => c.id !== clipId),
+        epoch: state.epoch + 1,
       }));
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     updateClip: (clipId, updates) => {
       set((state) => ({
         clips: state.clips.map((c) => (c.id === clipId ? { ...c, ...updates } : c)),
+        epoch: state.epoch + 1,
       }));
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     moveClip: (clipId, startTime) => {
       set((state) => ({
         clips: state.clips.map((c) => (c.id === clipId ? { ...c, startTime } : c)),
+        epoch: state.epoch + 1,
       }));
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     setPixelsPerSecond: (pps) => {
@@ -275,11 +251,6 @@ export const useTimelineStore = create<TimelineStore>(
           }),
         }));
 
-        // Trigger auto-save
-        import("./projectStore").then(({ useProjectStore }) => {
-          useProjectStore.getState().scheduleAutoSave();
-        });
-
         return { error: null };
       }
 
@@ -307,11 +278,6 @@ export const useTimelineStore = create<TimelineStore>(
           return c;
         }),
       }));
-
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
 
       return { error: null };
     },
@@ -420,11 +386,6 @@ export const useTimelineStore = create<TimelineStore>(
           return c;
         }),
       }));
-
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     // Sequence-based operations for gap engine
@@ -459,11 +420,6 @@ export const useTimelineStore = create<TimelineStore>(
           return updated || c;
         }),
       }));
-
-      // Trigger auto-save
-      import("./projectStore").then(({ useProjectStore }) => {
-        useProjectStore.getState().scheduleAutoSave();
-      });
     },
 
     normalizeTrack: (trackId) => {

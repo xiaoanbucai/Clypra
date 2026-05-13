@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { usePlaybackClock, usePlaybackControls } from "./usePlaybackClock";
 import { useProjectStore } from "../store/projectStore";
 
@@ -10,12 +11,14 @@ import { useProjectStore } from "../store/projectStore";
 export const usePlayback = () => {
   const clockState = usePlaybackClock();
   const controls = usePlaybackControls();
-  const { project } = useProjectStore();
+  const projectFrameRate = useProjectStore((s) => s.project?.frameRate);
 
   // Sync project framerate to clock
-  if (project && clockState.frameRate !== project.frameRate) {
-    controls.setFrameRate(project.frameRate);
-  }
+  useEffect(() => {
+    if (projectFrameRate && clockState.frameRate !== projectFrameRate) {
+      controls.setFrameRate(projectFrameRate);
+    }
+  }, [projectFrameRate, clockState.frameRate, controls]);
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);

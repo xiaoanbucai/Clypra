@@ -23,11 +23,42 @@ type AutoSave = <T, Mps extends [StoreMutatorIdentifier, unknown][] = [], Mcs ex
 
 type AutoSaveImpl = <T>(f: StateCreator<T, [], []>) => StateCreator<T, [], []>;
 
+// Transaction support: suspend auto-save during drag operations
+let _suspended = false;
+let _pendingSave = false;
+
+/** Suspend auto-save (e.g., during drag). Call resumeAutoSave() when done. */
+export function suspendAutoSave(): void {
+  _suspended = true;
+  _pendingSave = false;
+}
+
+/** Resume auto-save. If any mutations occurred while suspended, triggers one save. */
+export function resumeAutoSave(): void {
+  _suspended = false;
+  if (_pendingSave) {
+    _pendingSave = false;
+    import("../projectStore")
+      .then(({ useProjectStore }) => {
+        useProjectStore.getState().scheduleAutoSave();
+      })
+      .catch((err) => {
+        console.error("[AutoSaveMiddleware] Failed to trigger deferred auto-save:", err);
+      });
+  }
+}
+
 const autoSaveImpl: AutoSaveImpl = (f) => (set, get, store) => {
   // Wrap the set function to trigger auto-save after state changes
   const wrappedSet: typeof set = (partial, replace) => {
     // Call the original set with proper arguments
     set(partial, replace as any);
+
+    // If suspended (e.g., during drag), defer save until resume
+    if (_suspended) {
+      _pendingSave = true;
+      return;
+    }
 
     // Trigger auto-save asynchronously to avoid blocking state updates
     // Use dynamic import to avoid circular dependency

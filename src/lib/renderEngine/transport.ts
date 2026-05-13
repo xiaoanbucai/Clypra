@@ -99,10 +99,14 @@ export function unregisterActiveEpoch(clipId: string): void {
 }
 
 /**
- * Returns true if the given epochId is still the active epoch for ANY clip.
- * This allows shared epochs across clips (e.g. multi-clip scrubbing).
+ * Returns true if the given epochId is still the active epoch.
+ * When clipId is provided, validates strictly for that clip (prevents cross-clip stale artifacts).
+ * Without clipId, checks if ANY clip holds this epoch (backward compat).
  */
-export function isEpochStillValid(epochId: RenderEpochId): boolean {
+export function isEpochStillValid(epochId: RenderEpochId, clipId?: string): boolean {
+  if (clipId) {
+    return _activeEpochs.get(clipId) === epochId;
+  }
   for (const active of _activeEpochs.values()) {
     if (active === epochId) return true;
   }
@@ -153,11 +157,11 @@ export function requestRenderArtifacts(opts: RequestRenderArtifactsOptions): () 
   const channel = new Channel<BackendRenderArtifact>();
   channel.onmessage = async (raw) => {
     if (cancelled) return;
-    if (!isEpochStillValid(epochId)) return;
+    if (!isEpochStillValid(epochId, clipId)) return;
 
     try {
       const bitmap = await rgbaToImageBitmap(raw.rgba_data, raw.width, raw.height);
-      if (cancelled || !isEpochStillValid(epochId)) {
+      if (cancelled || !isEpochStillValid(epochId, clipId)) {
         bitmap.close();
         return;
       }
@@ -310,7 +314,7 @@ export function requestBatchRenderArtifacts(opts: RequestBatchRenderArtifactsOpt
   const channel = new Channel<BackendRenderArtifact>();
   channel.onmessage = async (raw) => {
     if (cancelled) return;
-    if (!isEpochStillValid(epochId)) {
+    if (!isEpochStillValid(epochId, clipId)) {
       return;
     }
 
@@ -318,7 +322,7 @@ export function requestBatchRenderArtifacts(opts: RequestBatchRenderArtifactsOpt
 
     try {
       const bitmap = await rgbaToImageBitmap(raw.rgba_data, raw.width, raw.height);
-      if (cancelled || !isEpochStillValid(epochId)) {
+      if (cancelled || !isEpochStillValid(epochId, clipId)) {
         bitmap.close();
         return;
       }
@@ -414,7 +418,7 @@ export function requestProgressiveTiers(opts: RequestProgressiveTiersOptions): (
     const tier = tiers[idx];
 
     // Re-validate epoch before each tier batch
-    if (!isEpochStillValid(epochId)) return;
+    if (!isEpochStillValid(epochId, clipId)) return;
 
     const [width, height] = SPATIAL_TIER_DIMS[tier];
 

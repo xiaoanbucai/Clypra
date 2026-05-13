@@ -286,8 +286,16 @@ export function useFilmstrip(opts: UseFilmstripOptions): UseFilmstripResult {
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      // CRITICAL: Don't close accumulated bitmaps here - they're now tracked in prevArtifactsRef
-      // and will be closed when the next batch completes (in scheduleFlush/onComplete)
+      // Close any bitmaps in accumulated that aren't already tracked in prevArtifactsRef.
+      // This handles the race where cleanup fires before RAF flush copies bitmaps over.
+      for (const artifact of accumulated.values()) {
+        if (artifact.bitmap) {
+          const isTracked = prevArtifactsRef.current.some((a) => a.bitmap === artifact.bitmap);
+          if (!isTracked) {
+            artifact.bitmap.close();
+          }
+        }
+      }
       accumulated.clear();
       disposePrev();
       isProcessingRef.current = false; // Reset processing flag on cleanup

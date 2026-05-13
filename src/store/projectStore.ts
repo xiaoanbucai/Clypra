@@ -99,27 +99,24 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   loadProject: async (project, payload) => {
-    // Dispose previous project runtime and initialize new one
+    // 1. Dispose previous runtime first
     try {
-      const { disposeProjectRuntime, initializeProjectRuntime } = await import("../core/runtime/ProjectRuntimeManager");
+      const { disposeProjectRuntime } = await import("../core/runtime/ProjectRuntimeManager");
       await disposeProjectRuntime();
-      await initializeProjectRuntime(project.id);
     } catch (err) {
-      console.error("[LoadProject] Runtime initialization failed:", err);
+      console.error("[LoadProject] Runtime disposal failed:", err);
     }
 
-    // Apply project and provided mediaAssets immediately so normalization has access
+    // 2. Apply project and provided mediaAssets so normalization has access
     set({ project, mediaAssets: payload?.mediaAssets ?? [] });
 
+    // 3. Hydrate timeline with normalized clips
     try {
-      // Atomically reset and restore timeline state to avoid race conditions
       const { useTimelineStore } = await import("./timelineStore");
 
-      // Determine final tracks/clips to restore (favor payload over existing store)
       const finalTracks = payload?.tracks ?? [];
       const finalClipsRaw = payload?.clips ?? [];
 
-      // Normalize clips using the mediaAssets we just applied
       const { normalizeClipTiming } = await import("../lib/timelineClip");
       const mediaAssets = get().mediaAssets;
 
@@ -128,20 +125,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         return normalizeClipTiming(clip, asset);
       });
 
-      
-
-      // Set the timeline store in one operation (start from defaults then apply)
       useTimelineStore.setState({
         ...DEFAULT_TIMELINE_VIEW,
         tracks: finalTracks,
         clips: normalizedClips,
       });
-
-      
     } catch (err) {
       console.error("[LoadProject] Failed to restore timeline state:", err);
-      // Fallback: ensure timeline is cleared
       import("./timelineStore").then(({ useTimelineStore }) => useTimelineStore.setState(DEFAULT_TIMELINE_VIEW));
+    }
+
+    // 4. Initialize runtime LAST — stores are now fully populated
+    try {
+      const { initializeProjectRuntime } = await import("../core/runtime/ProjectRuntimeManager");
+      await initializeProjectRuntime(project.id);
+    } catch (err) {
+      console.error("[LoadProject] Runtime initialization failed:", err);
     }
   },
 
@@ -217,8 +216,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           const { useTimelineStore } = await import("./timelineStore");
           const { tracks, clips } = useTimelineStore.getState();
 
-          
-
           // Convert camelCase to snake_case for Rust backend
           const projectData = {
             id: project.id,
@@ -239,7 +236,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           await invoke("save_project", {
             projectData: JSON.stringify(projectData),
           });
-          
+
           get().setToastMessage("Project saved");
           setTimeout(() => get().setToastMessage(null), 2000);
         } catch (error) {

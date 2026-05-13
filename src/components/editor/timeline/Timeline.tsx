@@ -17,6 +17,7 @@ import type { VideoMetadata } from "../../../types";
 import { createClipFromAsset, getTimelineViewportEnd } from "../../../lib/timelineClip";
 import { useRenderEngineStore } from "../../../store/renderEngineStore";
 import { TIMELINE_MAX_PPS, TIMELINE_MIN_PPS } from "../../../lib/timelineZoom";
+import { suspendAutoSave, resumeAutoSave } from "../../../store/middleware/autoSaveMiddleware";
 
 /** Multiplier on normalized wheel delta (pixels); higher = stronger zoom per tick. */
 const WHEEL_ZOOM_SENSITIVITY = 0.006;
@@ -145,6 +146,7 @@ export const Timeline: React.FC = () => {
     (clipId: string, startX: number, startY: number) => {
       const clip = clips.find((c) => c.id === clipId);
       if (!clip) return;
+      suspendAutoSave();
       const selectedClipIds = useUIStore.getState().selectedClipIds;
       const draggedClipIds = selectedClipIds.includes(clipId) ? selectedClipIds : [clipId];
 
@@ -232,6 +234,9 @@ export const Timeline: React.FC = () => {
 
     const { targetTrackId, willCreateNewTrack, newTrackPosition } = resolveTrackAtClientY(container, liveTracks, clientY);
 
+    // Helper: only trigger re-render when visual feedback fields change
+    const shouldRerender = (next: typeof ds) => ds.targetTrackId !== next.targetTrackId || ds.insertionIndex !== next.insertionIndex || ds.isInvalidPosition !== next.isInvalidPosition || ds.willCreateNewTrack !== next.willCreateNewTrack || ds.newTrackPosition !== next.newTrackPosition;
+
     // If creating new track, show indicator and skip gap calculation
     if (willCreateNewTrack) {
       const next = {
@@ -247,7 +252,7 @@ export const Timeline: React.FC = () => {
         newTrackPosition,
       };
       dragStateRef.current = next;
-      setDragState(next);
+      if (shouldRerender(next)) setDragState(next);
       return;
     }
 
@@ -269,14 +274,14 @@ export const Timeline: React.FC = () => {
         newTrackPosition: null,
       };
       dragStateRef.current = next;
-      setDragState(next);
+      if (shouldRerender(next)) setDragState(next);
       return;
     }
 
     if (!targetTrackId) {
       const next = { ...ds, offsetX, offsetY };
       dragStateRef.current = next;
-      setDragState(next);
+      if (shouldRerender(next)) setDragState(next);
       return;
     }
 
@@ -320,7 +325,7 @@ export const Timeline: React.FC = () => {
       newTrackPosition: null,
     };
     dragStateRef.current = next;
-    setDragState(next);
+    if (shouldRerender(next)) setDragState(next);
   }, []);
 
   const handleClipDragEnd = useCallback(
@@ -347,6 +352,7 @@ export const Timeline: React.FC = () => {
       if (!clip) {
         dragStateRef.current = null;
         setDragState(null);
+        resumeAutoSave();
         return;
       }
       // Note: Main track protection removed - timeline is now time-centric, not track-centric
@@ -373,6 +379,7 @@ export const Timeline: React.FC = () => {
 
         dragStateRef.current = null;
         setDragState(null);
+        resumeAutoSave();
         return;
       }
 
@@ -412,6 +419,7 @@ export const Timeline: React.FC = () => {
 
       dragStateRef.current = null;
       setDragState(null);
+      resumeAutoSave();
     },
     [insertClipAtIndex, updateClip, insertTrackAt, normalizeTrack, removeEmptyNonMainTracks],
   );
@@ -437,6 +445,7 @@ export const Timeline: React.FC = () => {
 
       dragStateRef.current = null;
       setDragState(null);
+      resumeAutoSave();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -607,16 +616,18 @@ export const Timeline: React.FC = () => {
     const MIN_TIMELINE_DURATION = 10;
     const timelineDuration = Math.max(contentEnd, MIN_TIMELINE_DURATION);
     setDuration(timelineDuration);
+  }, [clips, getTimelineEndTime, setDuration]);
 
-    // ✅ CRITICAL: Clamp playhead if it's now beyond valid timeline bounds
-    // This handles the case where:
-    // - User deletes a long clip while playhead is near its end
-    // - Timeline duration shrinks
-    // - Playhead must snap to new timeline end (professional behavior)
-    if (currentTime > timelineDuration) {
-      seek(timelineDuration);
+  // ✅ CRITICAL: Clamp playhead if it's now beyond valid timeline bounds
+  // This handles the case where:
+  // - User deletes a long clip while playhead is near its end
+  // - Timeline duration shrinks
+  // - Playhead must snap to new timeline end (professional behavior)
+  useEffect(() => {
+    if (currentTime > duration) {
+      seek(duration);
     }
-  }, [clips, getTimelineEndTime, setDuration, currentTime, seek]);
+  }, [duration, currentTime, seek]);
 
   // Auto-scroll during playback: bulletproof viewport tracking with strict invariants
   useEffect(() => {

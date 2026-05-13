@@ -31,6 +31,8 @@
 import { create } from "zustand";
 import { RenderRuntime } from "../lib/renderEngine/renderRuntime";
 import { type QualityPreset, type RendererMode, type SrpConfig } from "../lib/renderEngine/types";
+import { resetFrameScheduler } from "../core/scheduler/FrameScheduler";
+import { resetPlaybackClock } from "../core/playback/PlaybackClock";
 
 interface RenderEngineStore {
   runtime: RenderRuntime | null;
@@ -59,6 +61,8 @@ export const useRenderEngineStore = create<RenderEngineStore>((set, get) => ({
   destroyRuntime: () => {
     const { runtime } = get();
     if (runtime) {
+      resetFrameScheduler();
+      resetPlaybackClock();
       runtime.teardown();
       set({ runtime: null });
     }

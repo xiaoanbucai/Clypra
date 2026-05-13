@@ -5,29 +5,29 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { EditorLayout } from "../editor/EditorLayout";
 import { SettingsModal } from "../ui/SettingsModal";
 import { SuccessToast } from "../ui/SuccessToast";
-import { useKeyboardShortcuts } from "../../hooks/useKeyboardShortcuts";
 import { usePlaybackControls } from "../../hooks/usePlaybackClock";
 import { useProjectStore } from "../../store/projectStore";
 import { useUIStore } from "../../store/uiStore";
 import { useRenderEngineStore } from "../../store/renderEngineStore";
 
 export const EditorScreen: React.FC = () => {
-  const { toastMessage } = useProjectStore();
+  const toastMessage = useProjectStore((s) => s.toastMessage);
   const { setDuration } = usePlaybackControls();
-  const { project } = useProjectStore();
+  const projectId = useProjectStore((s) => s.project?.id);
+  const projectDuration = useProjectStore((s) => s.project?.duration ?? 0);
   const { showSettingsModal, toggleSettingsModal } = useUIStore();
   const { initRuntime, destroyRuntime } = useRenderEngineStore();
 
   useEffect(() => {
-    if (project) {
-      setDuration(project.duration);
-      initRuntime(project.id);
+    if (projectId) {
+      setDuration(projectDuration);
+      initRuntime(projectId);
     }
 
     return () => {
       destroyRuntime();
     };
-  }, [project, setDuration, initRuntime, destroyRuntime]);
+  }, [projectId, projectDuration, setDuration, initRuntime, destroyRuntime]);
 
   return (
     <DndProvider backend={HTML5Backend}>
