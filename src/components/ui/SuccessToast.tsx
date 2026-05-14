@@ -120,6 +120,7 @@ export function SuccessToast({ message, variant = "success", onDismiss, autoHide
         transform: isEntering || isLeaving ? "translateY(16px) scale(0.97)" : "translateY(0) scale(1)",
         opacity: isEntering || isLeaving ? 0 : 1,
         transition: "transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 300ms ease",
+        zIndex: 1000,
       }}
       className="fixed bottom-5 right-5 z-50 w-80 overflow-hidden rounded-xl elev-soft"
     >
