@@ -45,6 +45,10 @@ export const useKeyboardShortcuts = () => {
           e.preventDefault();
           exitSourceMode();
           return;
+        } else if (e.code === "Space") {
+          // Space key in source mode should NOT trigger timeline playback
+          e.preventDefault();
+          return;
         }
       }
 

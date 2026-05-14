@@ -33,6 +33,50 @@ export const SourcePreview: React.FC = () => {
     setGpuFailed(false);
   }, [sourceAsset?.id]); // Only depend on asset ID, not type
 
+  // Play/pause handler
+  const handlePlayPause = useCallback(() => {
+    if (useGPU) {
+      // GPU preview: just toggle state, GPUPreview handles playback
+      setIsPlaying((prev) => !prev);
+    } else if (sourceAsset?.type === "audio") {
+      // Audio: control audio element
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (isPlaying) {
+        audio.pause();
+        setIsPlaying(false);
+      } else {
+        audio.play();
+        setIsPlaying(true);
+      }
+    } else {
+      // HTML5 video: control video element
+      const video = videoRef.current;
+      if (!video) return;
+      if (isPlaying) {
+        video.pause();
+        setIsPlaying(false);
+      } else {
+        video.play();
+        setIsPlaying(true);
+      }
+    }
+  }, [useGPU, sourceAsset?.type, isPlaying]);
+
+  // Handle space key for play/pause in source preview
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle space key when in source preview mode
+      if (e.code === "Space") {
+        e.preventDefault();
+        handlePlayPause();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handlePlayPause]);
+
   // Video event listeners (only for HTML5 video, not GPU preview)
   useEffect(() => {
     if (useGPU) return; // Skip if using GPU preview
@@ -84,35 +128,6 @@ export const SourcePreview: React.FC = () => {
   }, []);
 
   if (!sourceAsset) return null;
-
-  const handlePlayPause = () => {
-    if (useGPU) {
-      // GPU preview: just toggle state, GPUPreview handles playback
-      setIsPlaying(!isPlaying);
-    } else if (sourceAsset.type === "audio") {
-      // Audio: control audio element
-      const audio = audioRef.current;
-      if (!audio) return;
-      if (isPlaying) {
-        audio.pause();
-        setIsPlaying(false);
-      } else {
-        audio.play();
-        setIsPlaying(true);
-      }
-    } else {
-      // HTML5 video: control video element
-      const video = videoRef.current;
-      if (!video) return;
-      if (isPlaying) {
-        video.pause();
-        setIsPlaying(false);
-      } else {
-        video.play();
-        setIsPlaying(true);
-      }
-    }
-  };
 
   const handleAddToTimeline = () => {
     if (!project) return;

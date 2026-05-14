@@ -896,11 +896,24 @@ const ProgramPreview: React.FC = () => {
         currentTime={currentTime}
         duration={duration}
         isPlaying={isPlaying}
-        onPlayPause={() => (isPlaying ? pause() : play())}
-        onSeek={seek}
+        disabled={clips.length === 0}
+        onPlayPause={() => {
+          if (clips.length === 0) return; // Disable playback when timeline is empty
+          isPlaying ? pause() : play();
+        }}
+        onSeek={(time) => {
+          if (clips.length === 0) return; // Disable seeking when timeline is empty
+          seek(time);
+        }}
         formatTime={formatTime}
-        onStepBack={() => seek(Math.max(0, currentTime - step))}
-        onStepForward={() => seek(Math.min(duration, currentTime + step))}
+        onStepBack={() => {
+          if (clips.length === 0) return; // Disable frame stepping when timeline is empty
+          seek(Math.max(0, currentTime - step));
+        }}
+        onStepForward={() => {
+          if (clips.length === 0) return; // Disable frame stepping when timeline is empty
+          seek(Math.min(duration, currentTime + step));
+        }}
         leftActions={
           <div className="relative" ref={speedMenuRef}>
             <button onClick={() => setSpeedMenuOpen((o) => !o)} className="flex items-center gap-1 px-2 h-6 rounded text-[10px] font-medium text-text-muted hover:text-text-primary hover:bg-white/6 transition-colors" title="Playback speed" aria-expanded={speedMenuOpen}>

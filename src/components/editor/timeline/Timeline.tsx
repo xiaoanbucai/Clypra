@@ -884,7 +884,25 @@ export const Timeline: React.FC = () => {
   }, [handleTauriFileDrop]);
 
   return (
-    <div className="h-80 flex flex-col select-none bg-[#141920]">
+    <div className="h-80 flex flex-col select-none bg-[#141920] relative">
+      {/* Disabled overlay when timeline is empty */}
+      {clips.length === 0 && (
+        <div
+          style={{
+            zIndex: 300,
+            pointerEvents: "auto",
+          }}
+          className="absolute inset-0 bg-black/40 backdrop-blur-[0.5px] pointer-events-none"
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center space-y-2">
+              <div className="text-text-muted/60 text-sm font-medium">Timeline Empty</div>
+              <div className="text-text-muted/40 text-xs">Add clips to enable playback</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <TimelineToolbar />
 
       <div className="flex-1 flex overflow-hidden">

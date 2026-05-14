@@ -22,22 +22,12 @@ interface PreviewTransportProps {
 
   // Slot for right-side extras (IN/OUT/Add, aspect/volume, etc.)
   rightActions?: React.ReactNode;
+
+  // Disable all controls (for empty timeline)
+  disabled?: boolean;
 }
 
-export const PreviewTransport: React.FC<PreviewTransportProps> = ({
-  currentTime,
-  duration,
-  isPlaying,
-  onPlayPause,
-  onSeek,
-  formatTime,
-  inPoint,
-  outPoint,
-  onStepBack,
-  onStepForward,
-  leftActions,
-  rightActions,
-}) => {
+export const PreviewTransport: React.FC<PreviewTransportProps> = ({ currentTime, duration, isPlaying, onPlayPause, onSeek, formatTime, inPoint, outPoint, onStepBack, onStepForward, leftActions, rightActions, disabled = false }) => {
   const scrubRef = useRef<HTMLDivElement>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
 
@@ -45,12 +35,12 @@ export const PreviewTransport: React.FC<PreviewTransportProps> = ({
 
   const seekToPosition = useCallback(
     (clientX: number) => {
-      if (!scrubRef.current || duration <= 0) return;
+      if (!scrubRef.current || duration <= 0 || disabled) return;
       const rect = scrubRef.current.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       onSeek(ratio * duration);
     },
-    [duration, onSeek],
+    [duration, onSeek, disabled],
   );
 
   useEffect(() => {
@@ -70,8 +60,9 @@ export const PreviewTransport: React.FC<PreviewTransportProps> = ({
       {/* ── Scrub Bar (thin, edge-to-edge) ────────────────────────── */}
       <div
         ref={scrubRef}
-        className="h-[5px] w-full cursor-pointer group relative shrink-0"
+        className={`h-[5px] w-full group relative shrink-0 ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
         onMouseDown={(e) => {
+          if (disabled) return;
           setIsScrubbing(true);
           seekToPosition(e.clientX);
         }}
@@ -89,40 +80,35 @@ export const PreviewTransport: React.FC<PreviewTransportProps> = ({
           />
         )}
         {/* Progress fill */}
-        <div className="absolute top-0 bottom-0 left-0 bg-accent transition-all duration-100 ease-linear" style={{ width: `${progressPct}%` }} />
+        <div className={`absolute top-0 bottom-0 left-0 transition-all duration-100 ease-linear ${disabled ? "bg-text-muted/30" : "bg-accent"}`} style={{ width: `${progressPct}%` }} />
         {/* Playhead dot */}
-        <div className="absolute top-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full bg-accent border-2 border-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ left: `calc(${progressPct}% - 5px)` }} />
+        {!disabled && <div className="absolute top-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full bg-accent border-2 border-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ left: `calc(${progressPct}% - 5px)` }} />}
       </div>
 
       {/* ── Bottom Controls ────────────────────────────────────────── */}
-      <div className="flex items-center h-10 px-3 shrink-0 relative">
+      <div className={`flex items-center h-10 px-3 shrink-0 relative ${disabled ? "opacity-40" : ""}`}>
         {/* Timecodes + left actions */}
         <div className="flex items-center gap-1">
           <div className="flex items-baseline gap-1 select-none" style={{ fontVariantNumeric: "tabular-nums" }}>
-            <span className="text-[12px] font-medium text-accent">{formatTime(currentTime)}</span>
+            <span className={`text-[12px] font-medium ${disabled ? "text-text-muted" : "text-accent"}`}>{formatTime(currentTime)}</span>
             <span className="text-[11px] text-text-muted/50">/</span>
             <span className="text-[12px] text-text-muted">{formatTime(duration)}</span>
           </div>
-          {leftActions}
+          {!disabled && leftActions}
         </div>
 
         {/* Center play controls */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
           {onStepBack && (
-            <button onClick={onStepBack} className="w-7 h-7 flex items-center justify-center rounded hover:bg-white/6 transition-colors text-text-muted hover:text-text-primary" title="Previous frame" aria-label="Previous frame">
+            <button onClick={disabled ? undefined : onStepBack} disabled={disabled} className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${disabled ? "cursor-not-allowed text-text-muted/50" : "hover:bg-white/6 text-text-muted hover:text-text-primary"}`} title={disabled ? "No clips on timeline" : "Previous frame"} aria-label="Previous frame">
               <SkipBack className="w-3.5 h-3.5" />
             </button>
           )}
-          <button
-            onClick={onPlayPause}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/6 transition-colors text-text-primary mx-1"
-            title={isPlaying ? "Pause" : "Play"}
-            aria-label={isPlaying ? "Pause playback" : "Play playback"}
-          >
+          <button onClick={disabled ? undefined : onPlayPause} disabled={disabled} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors mx-1 ${disabled ? "cursor-not-allowed text-text-muted/50" : "hover:bg-white/6 text-text-primary"}`} title={disabled ? "No clips on timeline" : isPlaying ? "Pause" : "Play"} aria-label={isPlaying ? "Pause playback" : "Play playback"}>
             {isPlaying ? <Pause className="w-[18px] h-[18px]" /> : <Play className="w-[18px] h-[18px] ml-0.5" />}
           </button>
           {onStepForward && (
-            <button onClick={onStepForward} className="w-7 h-7 flex items-center justify-center rounded hover:bg-white/6 transition-colors text-text-muted hover:text-text-primary" title="Next frame" aria-label="Next frame">
+            <button onClick={disabled ? undefined : onStepForward} disabled={disabled} className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${disabled ? "cursor-not-allowed text-text-muted/50" : "hover:bg-white/6 text-text-muted hover:text-text-primary"}`} title={disabled ? "No clips on timeline" : "Next frame"} aria-label="Next frame">
               <SkipForward className="w-3.5 h-3.5" />
             </button>
           )}

@@ -150,6 +150,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
       sourceAsset: null,
       sourceInPoint: null,
       sourceOutPoint: null,
+      previewMediaId: null,
     });
   },
 
