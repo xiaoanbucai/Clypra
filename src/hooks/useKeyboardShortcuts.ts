@@ -73,7 +73,7 @@ export const useKeyboardShortcuts = () => {
         if (e.key === "i") {
           e.preventDefault();
           const session = getActiveSessionOrNull();
-          const t = session?.sourceContext.getTime() ?? 0;
+          const t = session?.sourceContext?.getTime() ?? 0;
           markSourceIn(t);
           return;
         }
@@ -81,7 +81,7 @@ export const useKeyboardShortcuts = () => {
         if (e.key === "o") {
           e.preventDefault();
           const session = getActiveSessionOrNull();
-          const t = session?.sourceContext.getTime() ?? 0;
+          const t = session?.sourceContext?.getTime() ?? 0;
           markSourceOut(t);
           return;
         }

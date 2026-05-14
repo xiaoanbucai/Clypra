@@ -226,7 +226,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ asset, isSelected, isUsedInTimeli
     // Switch transport authority to source context
     import("../../../core/runtime/ProjectSession").then(({ getActiveSessionOrNull }) => {
       const session = getActiveSessionOrNull();
-      session?.transportAuthority.setActiveContext("source");
+      session?.transportAuthority?.setActiveContext("source");
     });
   };
 

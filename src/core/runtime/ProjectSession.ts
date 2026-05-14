@@ -122,21 +122,17 @@ export class ProjectSession {
 
   /**
    * Transport authority - single source of truth for playback ownership.
+   * Returns null if not yet initialized.
    */
-  get transportAuthority(): TransportAuthority {
-    if (!this._transportAuthority) {
-      throw new Error(`[ProjectSession] TransportAuthority not initialized. Call initialize() first.`);
-    }
+  get transportAuthority(): TransportAuthority | null {
     return this._transportAuthority;
   }
 
   /**
    * Source playback context (for binding media elements in SourcePreview).
+   * Returns null if not yet initialized.
    */
-  get sourceContext(): SourcePlaybackContext {
-    if (!this._sourceContext) {
-      throw new Error(`[ProjectSession] SourceContext not initialized. Call initialize() first.`);
-    }
+  get sourceContext(): SourcePlaybackContext | null {
     return this._sourceContext;
   }
 

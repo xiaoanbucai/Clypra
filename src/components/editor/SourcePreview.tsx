@@ -31,8 +31,9 @@ export const SourcePreview: React.FC = () => {
   // Get source context from active session and bind media element
   useEffect(() => {
     const session = getActiveSessionOrNull();
-    if (!session) return;
-    const ctx = session.sourceContext;
+    const ctx = session?.sourceContext;
+    if (!ctx) return;
+
     sourceCtxRef.current = ctx;
 
     // Bind appropriate media element
@@ -138,7 +139,7 @@ export const SourcePreview: React.FC = () => {
 
     // Switch transport authority back to program context
     const session = getActiveSessionOrNull();
-    session?.transportAuthority.setActiveContext("program");
+    session?.transportAuthority?.setActiveContext("program");
   };
 
   /** Format time as HH:MM:SS:FF (frame-accurate) */
@@ -170,7 +171,7 @@ export const SourcePreview: React.FC = () => {
           onClick={() => {
             exitSourceMode();
             const session = getActiveSessionOrNull();
-            session?.transportAuthority.setActiveContext("program");
+            session?.transportAuthority?.setActiveContext("program");
           }}
           className="w-7 h-7 flex items-center justify-center rounded hover:bg-white/6 transition-colors text-text-muted hover:text-text-primary"
           title="Close (Esc)"

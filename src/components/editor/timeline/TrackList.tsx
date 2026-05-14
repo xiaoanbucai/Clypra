@@ -16,11 +16,11 @@ export const TrackList: React.FC<TrackListProps> = ({ onEditTrack }) => {
 
   return (
     <div className="w-40 border-r border-timeline-track-border flex flex-col bg-timeline-track-bg">
-      <div className="h-8 px-3 border-b border-timeline-track-border flex items-center shrink-0 panel-head">
+      <div className="h-6 px-3 border-b border-timeline-track-border flex items-center shrink-0 panel-head">
         <span className="text-[11px] font-semibold tracking-wide text-timeline-track-label uppercase">Track</span>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center min-h-0">
+      <div className="flex-1 flex flex-col min-h-0">
         {tracks.length === 0 ? (
           // Edge case: No tracks exist at all (rare, but possible)
           <div className="flex-1 flex items-center justify-center px-3">

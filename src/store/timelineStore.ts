@@ -229,9 +229,30 @@ export const useTimelineStore = create<TimelineStore>(
     },
 
     addClip: (clip) => {
-      set((state) => ({
-        clips: [...state.clips, clip],
-      }));
+      set((state) => {
+        const wasEmpty = state.clips.length === 0;
+
+        // If timeline was empty, switch to program preview and seek to zero
+        if (wasEmpty) {
+          // Import dynamically to avoid circular dependency
+          import("../core/runtime/ProjectSession").then(({ getActiveSessionOrNull }) => {
+            const session = getActiveSessionOrNull();
+            if (session?.transportAuthority) {
+              session.transportAuthority.setActiveContext("program");
+              session.transportAuthority.seek(0);
+            }
+          });
+
+          // Exit source mode in UI
+          import("./uiStore").then(({ useUIStore }) => {
+            useUIStore.getState().exitSourceMode();
+          });
+        }
+
+        return {
+          clips: [...state.clips, clip],
+        };
+      });
     },
 
     removeClip: (clipId) => {
@@ -243,7 +264,7 @@ export const useTimelineStore = create<TimelineStore>(
           // Import dynamically to avoid circular dependency
           import("../core/runtime/ProjectSession").then(({ getActiveSessionOrNull }) => {
             const session = getActiveSessionOrNull();
-            if (session) {
+            if (session?.transportAuthority) {
               session.transportAuthority.seek(0);
             }
           });

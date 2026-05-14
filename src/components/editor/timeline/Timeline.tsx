@@ -541,9 +541,16 @@ export const Timeline: React.FC = () => {
     return () => window.removeEventListener("pointerdown", handleWindowPointerDown);
   }, []);
 
-  // ✅ Ensure content width uses viewport end (with 10s minimum for UX), but playback uses actual content end
-  const contentEnd = duration; // Playback duration is the actual content end
-  const viewportEnd = getTimelineViewportEnd(contentEnd);
+  // ✅ CRITICAL SEPARATION: Viewport extent vs Sequence duration
+  //
+  // Viewport extent (contentWidth) = visual editor space (min 10s for UX)
+  // Sequence duration (duration) = actual authored content (playback stops here)
+  //
+  // This separation is fundamental to professional NLE architecture:
+  // - Viewport can be larger than content (allows scrubbing, insertion, markers)
+  // - Playback stops at sequence end (no black frames after content)
+  const contentEnd = duration; // Sequence duration (authored content)
+  const viewportEnd = getTimelineViewportEnd(contentEnd); // Viewport extent (editor space, min 10s)
   const contentWidth = Math.round(viewportEnd * pixelsPerSecond);
 
   const seekFromPointer = useCallback(
@@ -638,26 +645,25 @@ export const Timeline: React.FC = () => {
     };
   }, []); // ✅ Effect runs once, reads fresh state imperatively
 
-  // ✅ Set playback duration - maintain minimum timeline extent even with no clips
-  // Professional NLE principle: timeline is a persistent temporal coordinate system
+  // ✅ Set playback duration based on actual sequence content
+  // Professional NLE principle: Sequence duration = authored content length
+  //
+  // CRITICAL DISTINCTION:
+  // - Sequence duration (playback range) = max clip end time
+  // - Viewport extent (editor space) = can be larger for UX
+  //
+  // Playback should STOP at sequence end, not continue on black frames.
+  // Empty timeline = 0 duration (playback immediately stops).
   useEffect(() => {
-    const contentEnd = getTimelineEndTime();
-    // Minimum 10 seconds - timeline exists independently of clips
-    // This allows:
-    // - Playhead to remain valid at any position
-    // - Insert/paste operations at any time
-    // - Markers without clips
-    // - Professional "empty timeline" workflow
-    const MIN_TIMELINE_DURATION = 10;
-    const timelineDuration = Math.max(contentEnd, MIN_TIMELINE_DURATION);
-    setDuration(timelineDuration);
+    const sequenceDuration = getTimelineEndTime(); // Actual authored content end
+    setDuration(sequenceDuration); // Playback stops here
   }, [clips]);
 
-  // ✅ CRITICAL: Clamp playhead if it's now beyond valid timeline bounds
-  // This handles the case where:
-  // - User deletes a long clip while playhead is near its end
-  // - Timeline duration shrinks
-  // - Playhead must snap to new timeline end (professional behavior)
+  // ✅ CRITICAL: Clamp playhead to sequence bounds
+  // Professional NLE behavior:
+  // - When sequence shrinks (clip deleted), playhead snaps to new end
+  // - Playhead never exceeds authored content duration
+  // - Empty timeline (duration=0) → playhead at 0
   useEffect(() => {
     if (currentTime > duration) {
       seek(duration);
@@ -889,96 +895,85 @@ export const Timeline: React.FC = () => {
   return (
     <div className="h-80 flex flex-col select-none bg-[#141920] relative">
       {/* Disabled overlay when timeline is empty */}
-      {clips.length === 0 && (
-        <div
-          style={{
-            zIndex: 300,
-            pointerEvents: "auto",
-          }}
-          className="absolute inset-0 bg-black/40 backdrop-blur-[0.5px] pointer-events-none"
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center space-y-2">
-              <div className="text-text-muted/60 text-sm font-medium">Timeline Empty</div>
-              <div className="text-text-muted/40 text-xs">Add clips to enable playback</div>
-            </div>
-          </div>
-        </div>
-      )}
+      {clips.length === 0 && <div className="absolute inset-0 bg-black/40 z-300 backdrop-blur-[0.5px] pointer-events-auto"></div>}
 
       <TimelineToolbar />
 
       <div className="flex-1 flex overflow-hidden">
-        <TrackList />
+        {clips.length > 0 && <TrackList />}
 
         <div ref={containerRef} onScroll={handleScroll} onClick={seekFromPointer} id="timeline-tracks-container" className={`flex-1 overflow-x-auto overflow-y-auto scrollbar-thin px-1 relative transition-colors border-l border-[#2b3442] ${isDraggingOver ? "bg-cyan-500/10 ring-2 ring-cyan-500/50 ring-inset" : ""}`}>
           {/* Minimal empty state hint - brutally subtle, preserves workspace identity */}
-          {clips.length === 0 && <div className="absolute bottom-3 left-3 text-[10px] text-white pointer-events-none font-mono">Drop media here • I to import</div>}
+          {clips.length === 0 && <div className="absolute top-1/2 left-3 text-xl text-white pointer-events-none font-mono">Drop media here • I to import</div>}
 
           <div
             style={{
               width: `${contentWidth}px`,
               minHeight: "100%",
             }}
-            className="relative flex flex-col justify-center"
+            className="relative flex flex-col"
           >
             <TimelineRuler pixelsPerSecond={pixelsPerSecond} scrollLeft={scrollLeft} />
 
-            <div className="relative flex-1 flex flex-col justify-center min-h-0">
-              {/* New track indicator - above all tracks */}
-              {dragState?.willCreateNewTrack && dragState?.newTrackPosition === "above" && (
-                <div
-                  className="absolute left-0 right-0 pointer-events-none z-50"
-                  style={{
-                    top: 0,
-                    height: "2px",
-                    background: "#3b82f6",
-                    boxShadow: "0 0 8px rgba(59, 130, 246, 0.6)",
-                  }}
-                />
+            <div className="relative flex-1 flex flex-col min-h-0">
+              {clips.length > 0 && (
+                <>
+                  {/* New track indicator - above all tracks */}
+                  {dragState?.willCreateNewTrack && dragState?.newTrackPosition === "above" && (
+                    <div
+                      className="absolute left-0 right-0 pointer-events-none z-50"
+                      style={{
+                        top: 0,
+                        height: "2px",
+                        background: "#3b82f6",
+                        boxShadow: "0 0 8px rgba(59, 130, 246, 0.6)",
+                      }}
+                    />
+                  )}
+
+                  {tracks.map((track) => (
+                    <React.Fragment key={track.id}>
+                      <Track
+                        track={track}
+                        pixelsPerSecond={pixelsPerSecond}
+                        clips={clips}
+                        onClipDragStart={handleClipDragStart}
+                        onClipDragMove={handleClipDragMove}
+                        onClipDragEnd={handleClipDragEnd}
+                        dragState={
+                          dragState
+                            ? {
+                                draggingClipId: dragState.draggingClipId,
+                                offsetX: dragState.offsetX,
+                                offsetY: dragState.offsetY,
+                                isInvalidPosition: dragState.isInvalidPosition,
+                                targetTrackId: dragState.targetTrackId,
+                                insertionIndex: dragState.insertionIndex,
+                                gapStartTime: dragState.gapStartTime,
+                                gapDuration: dragState.gapDuration,
+                              }
+                            : undefined
+                        }
+                      />
+                    </React.Fragment>
+                  ))}
+
+                  {/* New track indicator - below all tracks */}
+                  {dragState?.willCreateNewTrack && dragState?.newTrackPosition === "below" && (
+                    <div
+                      className="absolute left-0 right-0 pointer-events-none z-50"
+                      style={{
+                        bottom: 0,
+                        height: "2px",
+                        background: "#3b82f6",
+                        boxShadow: "0 0 8px rgba(59, 130, 246, 0.6)",
+                      }}
+                    />
+                  )}
+
+                  <Playhead pixelsPerSecond={pixelsPerSecond} duration={duration} containerRef={containerRef} />
+                </>
               )}
-
-              {tracks.map((track) => (
-                <React.Fragment key={track.id}>
-                  <Track
-                    track={track}
-                    pixelsPerSecond={pixelsPerSecond}
-                    clips={clips}
-                    onClipDragStart={handleClipDragStart}
-                    onClipDragMove={handleClipDragMove}
-                    onClipDragEnd={handleClipDragEnd}
-                    dragState={
-                      dragState
-                        ? {
-                            draggingClipId: dragState.draggingClipId,
-                            offsetX: dragState.offsetX,
-                            offsetY: dragState.offsetY,
-                            isInvalidPosition: dragState.isInvalidPosition,
-                            targetTrackId: dragState.targetTrackId,
-                            insertionIndex: dragState.insertionIndex,
-                            gapStartTime: dragState.gapStartTime,
-                            gapDuration: dragState.gapDuration,
-                          }
-                        : undefined
-                    }
-                  />
-                </React.Fragment>
-              ))}
-
-              {/* New track indicator - below all tracks */}
-              {dragState?.willCreateNewTrack && dragState?.newTrackPosition === "below" && (
-                <div
-                  className="absolute left-0 right-0 pointer-events-none z-50"
-                  style={{
-                    bottom: 0,
-                    height: "2px",
-                    background: "#3b82f6",
-                    boxShadow: "0 0 8px rgba(59, 130, 246, 0.6)",
-                  }}
-                />
-              )}
-
-              <Playhead pixelsPerSecond={pixelsPerSecond} duration={duration} containerRef={containerRef} />
             </div>
           </div>
         </div>
