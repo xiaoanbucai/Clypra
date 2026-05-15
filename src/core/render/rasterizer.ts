@@ -108,13 +108,27 @@ export async function rasterizeScene(scene: EvaluatedScene, target: RasterTarget
   ctx.fillRect(0, 0, width, height);
 
   // Calculate scale factors (target size / scene size)
+  // Use uniform scaling to preserve aspect ratio
   const scaleX = width / scene.metadata.canvasWidth;
   const scaleY = height / scene.metadata.canvasHeight;
+  const scale = Math.min(scaleX, scaleY); // Uniform scale (letterbox if needed)
 
-  // Rasterize all visual layers
+  // Calculate letterbox/pillarbox offsets to center content
+  const scaledCanvasWidth = scene.metadata.canvasWidth * scale;
+  const scaledCanvasHeight = scene.metadata.canvasHeight * scale;
+  const offsetX = (width - scaledCanvasWidth) / 2;
+  const offsetY = (height - scaledCanvasHeight) / 2;
+
+  // Apply centering offset
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+
+  // Rasterize all visual layers with uniform scaling
   for (const layer of scene.visualLayers) {
-    await rasterizeLayer(ctx, layer, scaleX, scaleY, target);
+    await rasterizeLayer(ctx, layer, scale, scale, target);
   }
+
+  ctx.restore();
 
   const rasterTimeMs = performance.now() - startTime;
 
@@ -123,8 +137,8 @@ export async function rasterizeScene(scene: EvaluatedScene, target: RasterTarget
     ctx,
     width,
     height,
-    scaleX,
-    scaleY,
+    scaleX: scale,
+    scaleY: scale,
     rasterTimeMs,
   };
 }

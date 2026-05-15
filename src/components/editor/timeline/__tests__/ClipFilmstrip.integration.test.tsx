@@ -318,10 +318,10 @@ describe("ClipFilmstrip Integration Tests", () => {
   /**
    * Test: Poster frame fallback for image assets
    *
-   * When media is an image (not video), the filmstrip should show a fallback
-   * and not call get_render_artifact.
+   * When media is an image (not video), the filmstrip renders a tiled canvas
+   * and does not call get_render_artifact.
    */
-  it("Test: Poster frame fallback for image assets", async () => {
+  it("Test: Image asset renders tiled canvas without render artifacts", async () => {
     const clip = createMockClip();
     const imageAsset = createMockMediaAsset({
       type: "image",
@@ -331,8 +331,8 @@ describe("ClipFilmstrip Integration Tests", () => {
     renderFilmstrip({ clip, mediaAsset: imageAsset, pixelsPerSecond: 100 });
     await act(async () => {});
 
-    // Should show fallback (not filmstrip)
-    expect(screen.getByTestId("clip-filmstrip-fallback")).toBeInTheDocument();
+    // Should show image tile canvas (not video filmstrip)
+    expect(screen.getByTestId("clip-filmstrip-image")).toBeInTheDocument();
 
     // Should NOT have called any render commands for images
     const renderCalls = mockState.invokeCalls.filter((c) => c.cmd === "get_render_artifact" || c.cmd === "get_thumbnails_for_timestamps");

@@ -1,13 +1,20 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VideoMetadata {
+pub struct MediaMetadata {
     pub duration: f64,
     pub width: u32,
     pub height: u32,
     pub fps: f64,
     pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotation: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_alpha: Option<bool>,
 }
+
+// Alias for backward compatibility
+pub type VideoMetadata = MediaMetadata;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Project {

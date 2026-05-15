@@ -280,7 +280,7 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
           </div>
         ) : mediaAsset?.type === "audio" ? (
           <div className="flex min-h-0 w-full flex-1 items-center">
-            <TimelineWaveform audioPath={mediaAsset.path} className="rounded-[2px]" />
+            <TimelineWaveform audioPath={mediaAsset.path} clipWidthPx={width} duration={clip.duration} className="rounded-[2px]" />
           </div>
         ) : mediaAsset?.posterFrame ? (
           <img src={mediaAsset.posterFrame} alt="" className="h-8 w-full rounded-[2px] border border-black/20 object-cover" draggable={false} />

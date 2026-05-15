@@ -275,6 +275,17 @@ const ProgramPreview: React.FC = () => {
     });
   }, [clips, mediaAssets]);
 
+  // Audio element management - separate from scene time updates
+  // Create/destroy audio elements for audio-only clips
+  const audioClips = useMemo(() => {
+    return clips.filter((clip) => {
+      const asset = mediaAssets.find((a) => a.id === clip.mediaId);
+      return asset?.type === "audio";
+    });
+  }, [clips, mediaAssets]);
+
+  const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+
   // Calculate display dimensions for canvas
   const canvasWidth = project?.canvasWidth ?? 1920;
   const canvasHeight = project?.canvasHeight ?? 1080;
@@ -486,6 +497,19 @@ const ProgramPreview: React.FC = () => {
     };
   }, []);
 
+  // Cleanup audio elements on component unmount only
+  useEffect(() => {
+    return () => {
+      Object.entries(audioRefs.current).forEach(([key, audio]) => {
+        if (!audio) return;
+        audio.pause();
+        audio.src = "";
+        audio.load();
+      });
+      audioRefs.current = {};
+    };
+  }, []);
+
   // Sync video playback state (doesn't touch src)
   useEffect(() => {
     const currentClockTime = clock.time;
@@ -635,6 +659,155 @@ const ProgramPreview: React.FC = () => {
     };
   }, [clockState.state, clockState.speed, clips, clock]);
 
+  // ── Audio Element Sync (Play/Pause/Seek) ──────────────────────────────────
+  // Sync audio playback state with master clock
+  useEffect(() => {
+    const currentClockTime = clock.time;
+
+    console.log(`[PreviewPanel] Sync audio playback - clockState: ${clockState.state}, time: ${currentClockTime.toFixed(3)}s, audio clips: ${Object.keys(audioRefs.current).length}`);
+
+    Object.values(audioRefs.current).forEach((audio) => {
+      if (!audio) return;
+
+      const clipId = audio.dataset.clipId;
+      const mediaId = audio.dataset.mediaId;
+      const audioKey = `${clipId}-${mediaId}`;
+
+      // Skip if audio has no source or isn't ready
+      if (!audio.src || audio.readyState < 2) {
+        console.log(`[PreviewPanel] Audio ${audioKey} not ready - src: ${!!audio.src}, readyState: ${audio.readyState}`);
+        return;
+      }
+
+      console.log(`[PreviewPanel] Audio ${audioKey} - readyState: ${audio.readyState}, duration: ${audio.duration.toFixed(2)}s, paused: ${audio.paused}, currentTime: ${audio.currentTime.toFixed(3)}s`);
+
+      // Audio settings
+      audio.muted = isMuted || volume === 0;
+      audio.volume = Math.max(0, Math.min(1, volume / 100));
+      audio.playbackRate = clockState.speed;
+
+      // Set initial time when starting playback or when paused
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        const clip = clips.find((c) => c.id === clipId);
+
+        if (clip) {
+          const clipLocalTime = currentClockTime - clip.startTime;
+          const trimIn = clip.trimIn || 0;
+          const sourceTime = trimIn + clipLocalTime;
+          const targetTime = Math.max(0, Math.min(sourceTime, Math.max(0, audio.duration - 0.01)));
+
+          if (clockState.state !== "playing") {
+            console.log(`[PreviewPanel] Audio ${audioKey} - seeking to ${targetTime.toFixed(3)}s (paused)`);
+            audio.currentTime = targetTime;
+          } else if (audio.paused) {
+            console.log(`[PreviewPanel] Audio ${audioKey} - seeking to ${targetTime.toFixed(3)}s (before play)`);
+            audio.currentTime = targetTime;
+          }
+        }
+      }
+
+      // Play/pause based on clock state
+      if (clockState.state === "playing") {
+        if (audio.paused) {
+          // Only try to play if audio is ready
+          if (audio.readyState >= 3) {
+            console.log(`[PreviewPanel] Audio ${audioKey} - calling play() (readyState: ${audio.readyState})`);
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  console.log(`[PreviewPanel] Audio ${audioKey} - play() succeeded`);
+                })
+                .catch((err) => {
+                  if (err.name !== "AbortError") {
+                    console.warn(`[PreviewPanel] Audio ${audioKey} - play() failed:`, err);
+                  }
+                });
+            }
+          } else {
+            console.log(`[PreviewPanel] Audio ${audioKey} - skipping play(), readyState: ${audio.readyState} (need >= 3)`);
+          }
+        }
+      } else {
+        if (!audio.paused) {
+          console.log(`[PreviewPanel] Audio ${audioKey} - calling pause()`);
+          audio.pause();
+        }
+      }
+    });
+
+    // NO cleanup here - audio elements persist across playback state changes
+  }, [clockState.state, isMuted, volume, clockState.speed, clips, clock]);
+
+  // ── Audio Drift Correction ────────────────────────────────────────────────
+  // Continuous drift correction via RAF for frame-accurate audio sync
+  useEffect(() => {
+    if (clockState.state !== "playing") return;
+
+    let rafId: number | null = null;
+
+    const syncLoop = () => {
+      const currentClockTime = clock.time; // Fresh time every frame
+
+      Object.values(audioRefs.current).forEach((audio) => {
+        if (!audio) return;
+
+        const clipId = audio.dataset.clipId;
+        const clip = clips.find((c) => c.id === clipId);
+        if (!clip) return;
+
+        const clipLocalTime = currentClockTime - clip.startTime;
+        if (clipLocalTime < 0 || clipLocalTime > clip.duration) {
+          if (!audio.paused) audio.pause();
+          return;
+        }
+
+        const trimIn = clip.trimIn || 0;
+        const sourceTime = trimIn + clipLocalTime;
+
+        if (Number.isFinite(audio.duration) && audio.duration > 0 && audio.readyState >= 3) {
+          const targetTime = Math.max(0, Math.min(sourceTime, Math.max(0, audio.duration - 0.01)));
+          const drift = Math.abs(audio.currentTime - targetTime);
+
+          if ("preservesPitch" in audio) {
+            (audio as any).preservesPitch = false;
+          }
+
+          if (drift < 0.1) {
+            // <100ms: Perfect sync — just ensure correct playbackRate
+            if (Math.abs(audio.playbackRate - clockState.speed) > 0.01) {
+              audio.playbackRate = clockState.speed;
+            }
+          } else if (drift <= 0.3) {
+            // 100ms - 300ms: Soft playbackRate correction
+            const correctionSpeed = audio.currentTime < targetTime ? clockState.speed * 1.02 : clockState.speed * 0.98;
+            if (Math.abs(audio.playbackRate - correctionSpeed) > 0.01) {
+              audio.playbackRate = correctionSpeed;
+            }
+          } else if (drift <= 0.6) {
+            // 300ms - 600ms: Hard seek
+            audio.currentTime = targetTime;
+            audio.playbackRate = clockState.speed;
+          } else {
+            // >600ms: Playback recovery reset
+            audio.pause();
+            audio.currentTime = targetTime;
+            audio.playbackRate = clockState.speed;
+            const p = audio.play();
+            if (p && typeof p.catch === "function") p.catch(console.error);
+          }
+        }
+      });
+
+      rafId = requestAnimationFrame(syncLoop);
+    };
+
+    rafId = requestAnimationFrame(syncLoop);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [clockState.state, clockState.speed, clips, clock]);
+
   if (!project) return null;
 
   if (dimensions.width === 0 || dimensions.height === 0) {
@@ -767,6 +940,49 @@ const ProgramPreview: React.FC = () => {
                     );
                   })}
                 </div>
+
+                {/* Hidden audio elements for audio-only clips (ENGINE CLOCK IS MASTER).
+                    ARCHITECTURE: Audio elements are keyed by clip+media ID and persist across time updates.
+                    They are only created/destroyed when clips are added/removed, not on every frame. */}
+                <div className="absolute top-0 left-0 pointer-events-none -z-10" style={{ width: "1px", height: "1px", opacity: 0, visibility: "hidden", overflow: "hidden" }}>
+                  {audioClips.map((clip) => {
+                    const asset = mediaAssets.find((a) => a.id === clip.mediaId);
+                    if (!asset) return null;
+                    const sourcePath = asset.path.startsWith("asset://") ? asset.path : convertFileSrc(asset.path);
+
+                    return (
+                      <audio
+                        key={`${clip.id}-${clip.mediaId}`}
+                        data-media-id={clip.mediaId}
+                        data-clip-id={clip.id}
+                        ref={(el) => {
+                          const key = `${clip.id}-${clip.mediaId}`;
+                          if (el) {
+                            audioRefs.current[key] = el;
+                          } else if (audioRefs.current[key]) {
+                            delete audioRefs.current[key];
+                          }
+                        }}
+                        src={sourcePath}
+                        preload="auto"
+                        onLoadedMetadata={(e) => {
+                          const audio = e.currentTarget;
+                          const key = `${clip.id}-${clip.mediaId}`;
+                          console.log(`[PreviewPanel] Audio metadata loaded - ${key}, duration: ${audio.duration.toFixed(2)}s, readyState: ${audio.readyState}`);
+                        }}
+                        onCanPlay={(e) => {
+                          const audio = e.currentTarget;
+                          const key = `${clip.id}-${clip.mediaId}`;
+                          console.log(`[PreviewPanel] Audio canPlay - ${key}, readyState: ${audio.readyState}`);
+                        }}
+                        onError={(e) => {
+                          const key = `${clip.id}-${clip.mediaId}`;
+                          console.error(`[PreviewPanel] Audio error - ${key}:`, e.currentTarget.error);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
               </>
             ) : (
               // DOM-based preview (legacy, for comparison)
@@ -858,10 +1074,10 @@ const ProgramPreview: React.FC = () => {
                             onError={(e) => {
                               console.error(`[PreviewPanel] Video error (visual) - ${layer.clipId}-${layer.mediaId}:`, e.currentTarget.error);
                             }}
-                            className="w-full h-full object-contain"
+                            className="w-full h-full object-cover"
                           />
                         ) : (
-                          <img src={layer.posterFrame || layer.sourcePath} alt={layer.mediaId} className="w-full h-full object-contain" />
+                          <img src={layer.posterFrame || layer.sourcePath} alt={layer.mediaId} className="w-full h-full object-cover" />
                         )}
                       </div>
                     );

@@ -139,7 +139,7 @@ export const createClipFromAsset = ({ asset, trackId, startTime, width, height }
   const duration = resolveClipDuration(asset);
 
   // Calculate dimensions that preserve aspect ratio (professional behavior)
-  // Default to "contain" - fits media inside canvas without stretching
+  // Default to "cover" - media fills the project frame, user adjusts transform if needed
   const {
     x,
     y,
@@ -149,7 +149,7 @@ export const createClipFromAsset = ({ asset, trackId, startTime, width, height }
     asset,
     width,
     height,
-    "contain", // Professional default: preserve aspect ratio, letterbox if needed
+    "contain", // Professional default: fill canvas, crop overflow
   );
 
   return {

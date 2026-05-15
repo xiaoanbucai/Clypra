@@ -29,6 +29,14 @@ const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif)$/i;
  */
 export function clearFilmstripFrameCache(): void {}
 
+/** Resolve a media source path without double-converting already-converted URLs. */
+function resolveMediaSrc(path: string): string {
+  if (path.startsWith("data:") || path.startsWith("asset://") || path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+  return convertFileSrc(path);
+}
+
 export interface ClipFilmstripProps {
   clip: Clip;
   mediaAsset: MediaAsset;
@@ -41,6 +49,8 @@ export interface ClipFilmstripProps {
 export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, stripHeightPx = 40, className }: ClipFilmstripProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const surfaceRef = useRef<AnyRasterSurface | null>(null);
+  const imageCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cachedImageRef = useRef<HTMLImageElement | null>(null);
 
   const isVideoSource = useMemo(() => {
     const path = mediaAsset.path ?? "";
@@ -92,6 +102,93 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
     }
   }, [artifacts, clipWidthPx, stripHeightPx, tileWidthPx]);
 
+  // ── Image tile rendering (still-image clips) ──────────────────────────────
+  useEffect(() => {
+    if (mediaAsset.type !== "image") return;
+
+    const canvas = imageCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let cancelled = false;
+    const src = resolveMediaSrc(mediaAsset.posterFrame || mediaAsset.path);
+
+    const drawTiles = (img: HTMLImageElement) => {
+      if (cancelled) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, clipWidthPx);
+      const h = stripHeightPx;
+
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      // Professional NLE: tile count derived from temporal width
+      const TILE_WIDTH = 80;
+      const tileCount = Math.max(1, Math.ceil(w / TILE_WIDTH));
+
+      for (let i = 0; i < tileCount; i++) {
+        const x = i * TILE_WIDTH;
+        const tileW = Math.min(TILE_WIDTH, w - x);
+
+        // Center-crop source rect to match tile aspect ratio
+        const imgAspect = img.width / img.height;
+        const tileAspect = tileW / h;
+
+        let sx: number, sy: number, sWidth: number, sHeight: number;
+        if (imgAspect > tileAspect) {
+          sHeight = img.height;
+          sWidth = img.height * tileAspect;
+          sx = (img.width - sWidth) / 2;
+          sy = 0;
+        } else {
+          sWidth = img.width;
+          sHeight = img.width / tileAspect;
+          sx = 0;
+          sy = (img.height - sHeight) / 2;
+        }
+
+        ctx.drawImage(img, sx, sy, sWidth, sHeight, x, 0, tileW, h);
+
+        // Soft tile separator for visual rhythm
+        if (i > 0) {
+          ctx.fillStyle = "rgba(0, 0, 0, 0.10)";
+          ctx.fillRect(x, 0, 1, h);
+        }
+      }
+
+      // Subtle overall darkening so clip text / overlays remain readable
+      ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+      ctx.fillRect(0, 0, w, h);
+    };
+
+    // Reuse cached image if same src already decoded
+    if (cachedImageRef.current?.src === src && cachedImageRef.current.complete && cachedImageRef.current.naturalWidth > 0) {
+      drawTiles(cachedImageRef.current);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      cachedImageRef.current = img;
+      drawTiles(img);
+    };
+    img.onerror = () => {
+      console.error("[ClipFilmstrip] Failed to load image:", src);
+    };
+    img.src = src;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaAsset.type, mediaAsset.path, mediaAsset.posterFrame, clipWidthPx, stripHeightPx]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   // Video filmstrip — canvas surface
@@ -102,7 +199,7 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
         {/* Poster overlay while artifacts load — fades out once canvas has content */}
         {isFallback && mediaAsset.posterFrame && (
           <img
-            src={mediaAsset.posterFrame.startsWith("data:") ? mediaAsset.posterFrame : convertFileSrc(mediaAsset.posterFrame)}
+            src={resolveMediaSrc(mediaAsset.posterFrame)}
             alt=""
             aria-hidden
             style={{
@@ -121,12 +218,11 @@ export function ClipFilmstrip({ clip, mediaAsset, clipWidthPx, pixelsPerSecond, 
     );
   }
 
-  // Image asset — poster or direct path
-  if (mediaAsset.posterFrame || mediaAsset.path) {
-    const src = mediaAsset.posterFrame ? (mediaAsset.posterFrame.startsWith("data:") ? mediaAsset.posterFrame : convertFileSrc(mediaAsset.posterFrame)) : mediaAsset.path.startsWith("asset://") ? mediaAsset.path : convertFileSrc(mediaAsset.path);
+  // Image asset — tiled canvas rendering (one decoded bitmap, many timeline tiles)
+  if (mediaAsset.type === "image" && (mediaAsset.posterFrame || mediaAsset.path)) {
     return (
-      <div data-testid="clip-filmstrip-fallback" className={cn("relative overflow-hidden rounded-[2px] border border-timeline-filmstrip-border", className)} style={{ height: stripHeightPx, width: "100%" }}>
-        <img src={src} alt="" className="absolute inset-0 block h-full w-full object-cover select-none" draggable={false} />
+      <div data-testid="clip-filmstrip-image" className={cn("relative overflow-hidden rounded-[2px] border border-timeline-filmstrip-border", className)} style={{ height: stripHeightPx, width: "100%" }}>
+        <canvas ref={imageCanvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
       </div>
     );
   }

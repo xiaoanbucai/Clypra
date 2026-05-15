@@ -43,72 +43,83 @@ export const useMediaImport = () => {
           const filename = path.split("/").pop() || "Unknown";
           const type = getMediaType(path);
 
-          if (type === "video" || type === "audio") {
-            const metadata: VideoMetadata = await invoke("get_video_metadata", { path });
+          try {
+            // Use unified metadata extraction for all media types
+            const metadata: VideoMetadata = await invoke("get_media_metadata", { path });
 
-            // Generate poster frame/thumbnail
-            let posterFrame: string | undefined;
-            let coverArt: string | undefined;
+            if (type === "video" || type === "audio") {
+              // Generate poster frame/thumbnail
+              let posterFrame: string | undefined;
+              let coverArt: string | undefined;
 
-            if (type === "video") {
-              // Use extract_poster_frame_command which extracts at 10% of duration (avoids black frames at 0s)
-              posterFrame = (await invoke("extract_poster_frame_command", {
-                videoPath: path,
+              if (type === "video") {
+                // Use extract_poster_frame_command which extracts at 10% of duration (avoids black frames at 0s)
+                posterFrame = (await invoke("extract_poster_frame_command", {
+                  videoPath: path,
+                  duration: metadata.duration,
+                  dpr: window.devicePixelRatio || 1.0,
+                }).catch((err) => {
+                  console.error("Failed to extract poster frame:", err);
+                  return undefined;
+                })) as string | undefined;
+              } else if (type === "audio") {
+                // Try to extract album artwork from audio file
+                try {
+                  coverArt = (await invoke("extract_audio_artwork", { path })) as string | undefined;
+                } catch (err) {
+                  // Ignore, fallback to waveform
+                }
+
+                // Generate waveform thumbnail for audio files
+                try {
+                  posterFrame = generateSimpleWaveform({
+                    width: 160,
+                    height: 90,
+                    barCount: 32,
+                    barColor: "#22d3ee",
+                    backgroundColor: "#1e293b",
+                  });
+                } catch (err) {
+                  // Ignore
+                }
+              }
+
+              const asset: MediaAsset = {
+                id: generateId("asset"),
+                name: filename,
+                path,
+                type,
                 duration: metadata.duration,
-                dpr: window.devicePixelRatio || 1.0,
-              }).catch((err) => {
-                console.error("Failed to extract poster frame:", err);
-                return undefined;
-              })) as string | undefined;
-            } else if (type === "audio") {
-              // Try to extract album artwork from audio file
-              try {
-                coverArt = (await invoke("extract_audio_artwork", { path })) as string | undefined;
-              } catch (err) {
-                // Ignore, fallback to waveform
-              }
+                width: metadata.width,
+                height: metadata.height,
+                posterFrame,
+                coverArt,
+                size: metadata.size,
+              };
+              addMediaAsset(asset);
+            } else {
+              // Image - metadata already extracted by Rust backend
+              const { convertFileSrc } = await import("@tauri-apps/api/core");
+              const { DEFAULT_STILL_DURATION_SECONDS } = await import("../constants/config");
 
-              // Generate waveform thumbnail for audio files
-              try {
-                posterFrame = generateSimpleWaveform({
-                  width: 160,
-                  height: 90,
-                  barCount: 32,
-                  barColor: "#22d3ee",
-                  backgroundColor: "#1e293b",
-                });
-              } catch (err) {
-                // Ignore
-              }
+              const asset: MediaAsset = {
+                id: generateId("asset"),
+                name: filename,
+                path,
+                type: "image",
+                duration: DEFAULT_STILL_DURATION_SECONDS,
+                width: metadata.width,
+                height: metadata.height,
+                size: metadata.size,
+                posterFrame: convertFileSrc(path), // Use the image itself as preview
+              };
+              addMediaAsset(asset);
+              importedCount++;
             }
-
-            const asset: MediaAsset = {
-              id: generateId("asset"),
-              name: filename,
-              path,
-              type,
-              duration: metadata.duration,
-              width: metadata.width,
-              height: metadata.height,
-              posterFrame,
-              coverArt,
-              size: metadata.size,
-            };
-            addMediaAsset(asset);
-          } else {
-            // For images, use the convertFileSrc to create a proper asset URL
-            const { convertFileSrc } = await import("@tauri-apps/api/core");
-            const asset: MediaAsset = {
-              id: generateId("asset"),
-              name: filename,
-              path,
-              type: "image",
-              duration: 0,
-              size: 0,
-              posterFrame: convertFileSrc(path), // Use the image itself as preview
-            };
-            addMediaAsset(asset);
-            importedCount++;
+          } catch (metadataError) {
+            console.error(`[MediaImport] Failed to extract metadata for ${path}:`, metadataError);
+            failedCount++;
+            continue;
           }
         } catch (fileError) {
           console.error(`[MediaImport] Failed to import ${path}:`, fileError);

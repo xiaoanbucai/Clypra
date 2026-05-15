@@ -1086,6 +1086,7 @@ pub fn run() {
             get_render_cache_stats,
             clear_thumbnail_cache,
             extract_poster_frame_command,
+            commands::media::get_media_metadata,
             commands::media::get_video_metadata,
             commands::media::extract_poster_frame,
             commands::media::extract_audio_artwork,

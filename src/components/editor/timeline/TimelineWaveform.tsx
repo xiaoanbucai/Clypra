@@ -4,16 +4,22 @@ import { drawRoundedRect, getThemeAccentRgb } from "@/lib/canvasUtils";
 
 interface TimelineWaveformProps {
   audioPath: string;
+  clipWidthPx: number;
+  duration: number;
   className?: string;
 }
 
 const waveformCache = new Map<string, number[]>();
 
-export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, className = "" }) => {
+export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, clipWidthPx, duration, className = "" }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [waveformData, setWaveformData] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [themeRevision, setThemeRevision] = useState(0);
+
+  // Calculate optimal sample count based on clip width
+  // Professional NLE behavior: more zoom = more detail
+  const sampleCount = Math.min(Math.max(Math.floor(clipWidthPx / 1.5), 200), 2000);
 
   // Watch for theme changes on document element and trigger redraw
   useEffect(() => {
@@ -31,9 +37,12 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, c
   useEffect(() => {
     const resolvedPath = audioPath.startsWith("asset://") ? audioPath : convertFileSrc(audioPath);
 
+    // Create cache key that includes sample count for zoom-responsive caching
+    const cacheKey = `${resolvedPath}:${sampleCount}`;
+
     // Check cache first
-    if (waveformCache.has(resolvedPath)) {
-      setWaveformData(waveformCache.get(resolvedPath)!);
+    if (waveformCache.has(cacheKey)) {
+      setWaveformData(waveformCache.get(cacheKey)!);
       setIsLoading(false);
       return;
     }
@@ -57,7 +66,7 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, c
         }
 
         const channelData = audioBuffer.getChannelData(0);
-        const samples = 400; // High density for smooth waveform
+        const samples = sampleCount; // Dynamic based on zoom level
         const blockSize = Math.floor(channelData.length / samples);
         const waveform: number[] = [];
 
@@ -77,7 +86,7 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, c
         const normalized = waveform.map((v) => (max > 0 ? v / max : 0));
 
         if (!isCancelled) {
-          waveformCache.set(resolvedPath, normalized);
+          waveformCache.set(cacheKey, normalized);
           setWaveformData(normalized);
           setIsLoading(false);
         }
@@ -86,11 +95,11 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, c
       } catch (error) {
         // Generate fallback pattern
         if (!isCancelled) {
-          const fallback = Array.from({ length: 400 }, (_, i) => {
+          const fallback = Array.from({ length: sampleCount }, (_, i) => {
             const seed = Math.sin(i * 0.15) * 0.5 + 0.5;
             return seed * (0.3 + Math.random() * 0.7);
           });
-          waveformCache.set(resolvedPath, fallback);
+          waveformCache.set(cacheKey, fallback);
           setWaveformData(fallback);
           setIsLoading(false);
         }
@@ -102,7 +111,7 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, c
     return () => {
       isCancelled = true;
     };
-  }, [audioPath]);
+  }, [audioPath, sampleCount]);
 
   // Draw waveform on canvas
   useEffect(() => {
@@ -125,20 +134,27 @@ export const TimelineWaveform: React.FC<TimelineWaveformProps> = ({ audioPath, c
 
     const barCount = waveformData.length;
     const barWidth = rect.width / barCount;
-    const barGap = 0.5;
-    const actualBarWidth = Math.max(1, barWidth - barGap);
+
+    // CapCut-style: No gaps, continuous bars for dense visualization
+    const actualBarWidth = Math.max(1, Math.ceil(barWidth));
 
     for (let i = 0; i < barCount; i++) {
       const value = waveformData[i];
       const minHeight = 2;
-      const maxHeight = rect.height * 0.92;
+      const maxHeight = rect.height * 0.95; // Use more vertical space
       const barHeight = Math.max(minHeight, value * maxHeight);
 
-      const x = i * barWidth + barGap / 2;
-      const y = (rect.height - barHeight) / 2;
+      const x = i * barWidth;
+      const y = rect.height - barHeight; // Grow from bottom
 
-      ctx.fillStyle = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.85)`;
-      drawRoundedRect(ctx, x, y, actualBarWidth, barHeight, 1);
+      // Gradient effect for visual depth (like CapCut)
+      const gradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
+      gradient.addColorStop(0, `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.95)`);
+      gradient.addColorStop(0.5, `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 1)`);
+      gradient.addColorStop(1, `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.95)`);
+
+      ctx.fillStyle = gradient;
+      drawRoundedRect(ctx, x, y, actualBarWidth, barHeight, 0.5);
     }
   }, [waveformData, themeRevision]);
 

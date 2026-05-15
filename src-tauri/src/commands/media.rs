@@ -1,37 +1,76 @@
 use crate::thumbnail_engine::decoder::get_decoder;
-use crate::models::VideoMetadata;
+use crate::models::{VideoMetadata, MediaMetadata};
 use base64::Engine;
 use image::ImageEncoder;
 use std::fs;
 
+/// Unified media metadata extraction for images, videos, and audio.
+/// Professional NLE approach: single probe pipeline for all media types.
 #[tauri::command]
-pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
-    match get_decoder(&path).await {
+pub async fn get_media_metadata(path: String) -> Result<MediaMetadata, String> {
+    eprintln!("🦀 [get_media_metadata] Probing: {}", path);
+    
+    // Determine media type from extension
+    let extension = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    
+    match extension.as_str() {
+        // Image formats - use image crate for native decoding
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tiff" | "tif" => {
+            get_image_metadata(&path).await
+        }
+        // Video/audio formats - use FFmpeg decoder
+        _ => get_video_metadata_internal(&path).await,
+    }
+}
+
+/// Extract metadata from image files using the image crate.
+/// Handles: dimensions, alpha channel, EXIF orientation.
+async fn get_image_metadata(path: &str) -> Result<MediaMetadata, String> {
+    use image::GenericImageView;
+    
+    eprintln!("🦀 [get_image_metadata] Loading image: {}", path);
+    
+    // Load image to extract metadata
+    let img = image::open(path)
+        .map_err(|e| format!("Failed to open image: {}", e))?;
+    
+    let (width, height) = img.dimensions();
+    
+    // Check for alpha channel
+    let has_alpha = match img.color() {
+        image::ColorType::La8 | image::ColorType::La16 |
+        image::ColorType::Rgba8 | image::ColorType::Rgba16 |
+        image::ColorType::Rgba32F => true,
+        _ => false,
+    };
+    
+    // Get file size
+    let size = fs::metadata(path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    
+    eprintln!("🦀 [get_image_metadata] Dimensions: {}×{}, Alpha: {}", width, height, has_alpha);
+    
+    Ok(MediaMetadata {
+        duration: 0.0,
+        width,
+        height,
+        fps: 0.0,
+        size,
+        rotation: None,
+        has_alpha: Some(has_alpha),
+    })
+}
+
+/// Extract metadata from video/audio files using FFmpeg decoder.
+/// Handles: dimensions, duration, fps, rotation, SAR.
+async fn get_video_metadata_internal(path: &str) -> Result<MediaMetadata, String> {
+    match get_decoder(path).await {
         Ok(decoder) => {
-            // let guard = decoder.lock().await;
-            
-            // let mut width = guard.width;
-            // let mut height = guard.height;
-            // let rotation = guard.rotation();
-            // let duration = guard.duration;
-            // let fps = guard.fps();
-            
-            // if rotation == 90 || rotation == 270 {
-            //     std::mem::swap(&mut width, &mut height);
-            // }
-            
-            // drop(guard);
-            
-            // let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-
-            // Ok(VideoMetadata {
-            //     duration,
-            //     width,
-            //     height,
-            //     fps,
-            //     size,
-            // })
-
             let guard = decoder.lock().await;
             
             // ✅ Use display_dimensions() which handles SAR + rotation
@@ -39,35 +78,48 @@ pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
             
             let duration = guard.duration;
             let fps = guard.fps();
+            let rotation = guard.rotation();
             
             drop(guard);
             
-            let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-            eprintln!("🦀 [get_video_metadata] Display dimensions: {}×{}", width, height);
+            eprintln!("🦀 [get_video_metadata_internal] Display dimensions: {}×{}, Rotation: {}°", width, height, rotation);
 
-            Ok(VideoMetadata {
+            Ok(MediaMetadata {
                 duration,
                 width,
                 height,
                 fps,
                 size,
+                rotation: if rotation != 0 { Some(rotation) } else { None },
+                has_alpha: None,
             })
         }
         Err(e) if e.contains("No video stream") => {
-            let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            let duration = get_audio_duration(&path).await.unwrap_or(0.0);
+            // Audio-only file
+            let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let duration = get_audio_duration(path).await.unwrap_or(0.0);
             
-            Ok(VideoMetadata {
+            Ok(MediaMetadata {
                 duration,
                 width: 0,
                 height: 0,
                 fps: 0.0,
                 size,
+                rotation: None,
+                has_alpha: None,
             })
         }
         Err(e) => Err(e),
     }
+}
+
+/// Legacy command for backward compatibility.
+/// New code should use get_media_metadata instead.
+#[tauri::command]
+pub async fn get_video_metadata(path: String) -> Result<VideoMetadata, String> {
+    get_video_metadata_internal(&path).await
 }
 
 async fn get_audio_duration(path: &str) -> Result<f64, String> {
