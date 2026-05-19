@@ -33,7 +33,7 @@ interface ClipProps {
 
 const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, selected, locked = false, onDragStart, onDragMove, onDragEnd, dragState }) => {
   const { selectClip, toggleClipSelection } = useUIStore();
-  const { updateClip, rippleEditEnabled, rippleTrimClip } = useTimelineStore();
+  const { clips, updateClip, rippleEditEnabled, rippleTrimClip } = useTimelineStore();
   const [isResizing, setIsResizing] = useState<"left" | "right" | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [resizeStart, setResizeStart] = useState<{ x: number; startTime: number; duration: number; trimIn: number; trimOut: number; isRipple: boolean } | null>(null);
@@ -249,6 +249,19 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
       if (resizePointerIdRef.current !== null && e.pointerId !== resizePointerIdRef.current) return;
       const deltaX = e.clientX - resizeStart.x;
       const deltaTime = deltaX / pixelsPerSecond;
+      const isRippleActive = e.shiftKey || rippleEditEnabled;
+
+      const trackClips = clips.filter((c) => c.trackId === clip.trackId && c.id !== clip.id);
+      const prevClipEnd = trackClips.reduce((maxEnd, c) => {
+        const end = c.startTime + c.duration;
+        if (end <= resizeStart.startTime + 1e-6) return Math.max(maxEnd, end);
+        return maxEnd;
+      }, 0);
+      const nextClipStart = trackClips.reduce((minStart, c) => {
+        if (c.startTime >= resizeStart.startTime + resizeStart.duration - 1e-6) return Math.min(minStart, c.startTime);
+        return minStart;
+      }, Number.POSITIVE_INFINITY);
+
       traceResize("pointermove", {
         clipId: clip.id,
         side: isResizing,
@@ -256,10 +269,10 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
         clientX: e.clientX,
         deltaX,
         deltaTime,
-        ripple: resizeStart.isRipple,
+        ripple: isRippleActive,
       });
 
-      if (resizeStart.isRipple) {
+      if (isRippleActive) {
         // RIPPLE MODE: Shift downstream clips
         traceResize("apply-ripple-trim", {
           clipId: clip.id,
@@ -287,7 +300,7 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
           const desiredDelta = desiredStartTime - resizeStart.startTime;
 
           // Clamp delta by: timeline start, minimum duration, and media trimIn bounds.
-          const minDelta = -resizeStart.startTime;
+          const minDelta = Math.max(-resizeStart.startTime, prevClipEnd - resizeStart.startTime);
           const maxDeltaByDuration = resizeStart.duration - minDuration;
           const maxDeltaByMedia = maxTrimIn - resizeStart.trimIn;
           const clampedDelta = Math.max(minDelta, Math.min(desiredDelta, maxDeltaByDuration, maxDeltaByMedia));
@@ -312,7 +325,9 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
           const minDuration = 0.1;
           const isStill = mediaAsset?.type === "image";
           const maxMediaTime = isStill ? MAX_STILL_CLIP_DURATION_SEC : (mediaAsset?.duration ?? resizeStart.trimOut);
-          const maxDuration = Math.max(minDuration, maxMediaTime - resizeStart.trimIn);
+          const maxDurationByMedia = Math.max(minDuration, maxMediaTime - resizeStart.trimIn);
+          const maxDurationByNextClip = Number.isFinite(nextClipStart) ? Math.max(minDuration, nextClipStart - resizeStart.startTime) : Number.POSITIVE_INFINITY;
+          const maxDuration = Math.min(maxDurationByMedia, maxDurationByNextClip);
 
           const desiredDuration = resizeStart.duration + deltaTime;
           const newDuration = Math.max(minDuration, Math.min(desiredDuration, maxDuration));
