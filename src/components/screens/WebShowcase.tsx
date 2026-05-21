@@ -451,7 +451,7 @@ export const WebShowcase: React.FC = () => {
                 </h4>
                 
                 <p className="text-xs md:text-sm text-[#a1a1aa] leading-relaxed">
-                  We are actively bringing the desktop-class native performance of Clypra to your pocket. Built on the brand-new Tauri v2 mobile core, Clypra Mobile will deliver lightning-fast, GPU-accelerated video editing directly on iOS and Android with seamless cloud workspace synchronization.
+                  We are actively bringing the desktop-class native performance of Clypra to your pocket. Built on the brand-new Tauri v2 mobile core, Clypra Mobile will deliver lightning-fast, GPU-accelerated video editing directly on iOS and Android with local-first project portability.
                 </p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
@@ -472,7 +472,7 @@ export const WebShowcase: React.FC = () => {
                   <div className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-pink-400 flex-shrink-0 mt-0.5" />
                     <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-white">Workspace Sync</span>
+                      <span className="text-xs font-semibold text-white">Local Portability</span>
                       <span className="text-[10px] text-[#666]">Seamless edit handover</span>
                     </div>
                   </div>
