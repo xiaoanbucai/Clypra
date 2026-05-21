@@ -165,7 +165,7 @@ npm run tauri build
 
 ## Screenshots
 
-![Clypra Video Editor Interface](public/clypra.jpg)
+![Clypra Video Editor Interface](public/home-screen.png)
 
 ## Architecture Highlights
 
