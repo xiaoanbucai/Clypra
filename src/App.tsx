@@ -60,7 +60,7 @@ const App = () => {
   }, [setRecentProjects]);
 
   useEffect(() => {
-    if (import.meta.env.DEV) return;
+    if (import.meta.env.DEV || !isTauri) return;
 
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault();

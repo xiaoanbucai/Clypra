@@ -234,7 +234,7 @@ export const WebShowcase: React.FC = () => {
               <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
                 Clypra
               </h1>
-              <p className="text-[9px] text-[#666] font-mono tracking-widest uppercase">Desktop Video Editor</p>
+              <p className="text-[9px] text-[#666] font-mono tracking-widest uppercase">Premium Video Editor</p>
             </div>
           </div>
 
@@ -268,7 +268,7 @@ export const WebShowcase: React.FC = () => {
 
           {/* Heading */}
           <h2 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-extrabold tracking-tight leading-[1.08] font-outfit text-white">
-            A Premium Desktop
+            A Premium
             <br />
             <span className="bg-gradient-to-r from-[#6c63ff] via-[#8b84ff] to-[#a9a4ff] bg-clip-text text-transparent shimmer-bg">
               Video Editor.
