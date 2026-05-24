@@ -45,7 +45,7 @@ interface UIStore {
   showSettingsModal: boolean;
 
   previewMode: "program" | "source";
-  sourceAsset: (MediaAsset & { type: "video" | "audio" | "image" | "text" }) | null;
+  sourceAsset: (Omit<MediaAsset, "type"> & { type: "video" | "audio" | "image" | "text" }) | null;
   sourceTextPreset: any | null;
   sourceInPoint: number | null;
   sourceOutPoint: number | null;
