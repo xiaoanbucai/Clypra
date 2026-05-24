@@ -7,7 +7,6 @@ import type { TabProps } from "./types";
 import { EffectCard } from "@/components/ui/EffectCard";
 import { TemplateCard } from "@/components/ui/TemplateCard";
 import { useUIStore } from "@/store/uiStore";
-import { TextEffectPicker } from "../../../features/text-effects/TextEffectPicker";
 import { allEffects } from "../../../features/text-effects/effects/definitions";
 
 export const TextTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
