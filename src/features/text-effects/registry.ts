@@ -251,3 +251,23 @@ register(NeonCrimsonDefinition, NeonCrimsonEngine);
 // VoltSector
 import { VoltSectorEngine, VoltSectorDefinition } from "./effects/VoltSector";
 register(VoltSectorDefinition, VoltSectorEngine);
+
+// MintGlacé
+import { MintGlacéEngine, MintGlacéDefinition } from "./effects/MintGlacé";
+register(MintGlacéDefinition, MintGlacéEngine);
+
+// LiquidObsidianPlasmaChrome
+import { LiquidObsidianPlasmaChromeEngine, LiquidObsidianPlasmaChromeDefinition } from "./effects/LiquidObsidianPlasmaChrome";
+register(LiquidObsidianPlasmaChromeDefinition, LiquidObsidianPlasmaChromeEngine);
+
+import { VibrantComicExplosionEngine, VibrantComicExplosionDefinition } from "./effects/VibrantComicExplosion";
+register(VibrantComicExplosionDefinition, VibrantComicExplosionEngine);
+
+import { NeonCyberStickerEngine, NeonCyberStickerDefinition } from "./effects/NeonCyberSticker";
+register(NeonCyberStickerDefinition, NeonCyberStickerEngine);
+
+import { GlossyYellowBubbleGelEngine, GlossyYellowBubbleGelDefinition } from "./effects/GlossyYellowBubbleGel";
+register(GlossyYellowBubbleGelDefinition, GlossyYellowBubbleGelEngine);
+
+import { RetroComicEngine, RetroComicDefinition } from "./effects/RetroComic";
+register(RetroComicDefinition, RetroComicEngine);
