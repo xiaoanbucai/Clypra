@@ -301,11 +301,10 @@ export class FilmstripCache {
     const existing = this.entries.get(clipId);
     if (existing) {
       console.log(`[FilmstripCache DEBUG] existing entry found for clipId=${clipId} epochId=${existing.epochId} currentEpochId=${epochId}`);
-      // Cancel the old request in all cases (since epoch or viewport bounds changed)
-      existing.cancelFn?.();
 
       if (existing.epochId !== epochId) {
-        // Epoch changed: clean up clip-level entry, but keep matching artifacts and do NOT invalidate global tile cache!
+        // Epoch changed: cancel the old request, clean up clip-level entry, but keep matching artifacts and do NOT invalidate global tile cache!
+        existing.cancelFn?.();
         const disposedArtifacts: TransportArtifact[] = [];
         for (const art of existing.artifacts) {
           const isMatched = tileAddresses.some(
@@ -349,6 +348,9 @@ export class FilmstripCache {
           onUpdate(cachedArtifacts);
           return;
         }
+
+        // Epoch and spatialTier are same, but layout/addresses changed: cancel the old request now
+        existing.cancelFn?.();
 
         // Separate artifacts to prevent memory leak and reuse valid ones
         const disposedArtifacts: TransportArtifact[] = [];
