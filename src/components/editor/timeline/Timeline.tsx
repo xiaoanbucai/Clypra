@@ -25,7 +25,7 @@ const traceSelect = (...args: unknown[]) => {
 };
 
 export const Timeline: React.FC = () => {
-  const { tracks, clips, pixelsPerSecond, scrollLeft, setScrollLeft, getTimelineEndTime } = useTimelineStore();
+  const { tracks, clips, pixelsPerSecond, scrollLeft, setScrollLeft, getTimelineEndTime, setViewportWidth } = useTimelineStore();
 
   const { previewMode, exitSourceMode, clearSelection } = useUIStore();
   const { currentTime, duration, isPlaying, seek, setDuration } = usePlayback();
@@ -36,6 +36,21 @@ export const Timeline: React.FC = () => {
   useTimelineZoom(containerRef);
   const { isDraggingOver, isDraggingMedia } = useTimelineTauriDrop(containerRef);
   const { dragState, handleClipDragStart, handleClipDragMove, handleClipDragEnd } = useTimelineDrag(containerRef);
+
+  // Measure container width and observe resize
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      setViewportWidth(el.clientWidth || 1200);
+    };
+    measure();
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [setViewportWidth]);
 
   // Attach scroll/pointer listeners to the timeline scroll container
   useEffect(() => {
