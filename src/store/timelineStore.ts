@@ -47,6 +47,7 @@ interface TimelineStore {
   epoch: number;
   zoomLevel: number;
   scrollLeft: number;
+  viewportWidth: number;
   pixelsPerSecond: number;
   rippleEditEnabled: boolean;
   clipDragMode: "free" | "insert" | "ripple";
@@ -76,6 +77,7 @@ interface TimelineStore {
   /** Clamps to the SRP zoom range and syncs `zoomLevel` to `pixelsPerSecond / 100`. */
   setPixelsPerSecond: (pps: number) => void;
   setScrollLeft: (left: number) => void;
+  setViewportWidth: (width: number) => void;
   getTimelineEndTime: () => number;
   swapClips: () => { error: string | null };
   toggleRippleEdit: () => void;
@@ -116,6 +118,7 @@ export const useTimelineStore = create<TimelineStore>(
     epoch: 0,
     zoomLevel: TIMELINE_ZOOM_DEFAULT,
     scrollLeft: 0,
+    viewportWidth: 1200,
     pixelsPerSecond: TIMELINE_ZOOM_DEFAULT * TIMELINE_PPS_PER_ZOOM,
     rippleEditEnabled: false,
     clipDragMode: "free",
@@ -331,6 +334,9 @@ export const useTimelineStore = create<TimelineStore>(
 
     setScrollLeft: (left) => {
       set({ scrollLeft: left });
+    },
+    setViewportWidth: (width) => {
+      set({ viewportWidth: width });
     },
 
     getTimelineEndTime: () => {
