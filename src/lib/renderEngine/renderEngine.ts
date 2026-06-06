@@ -335,6 +335,7 @@ export class RenderEngine {
         width: el.clientWidth,
         height: el.clientHeight,
       };
+      this._currentViewportBounds = bounds;
       this._ism.onScroll(el.scrollLeft, bounds, lastVelocityPx);
       lastScrollX = el.scrollLeft;
     };
