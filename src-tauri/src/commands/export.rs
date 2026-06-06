@@ -349,7 +349,7 @@ pub async fn write_export_frame(
     // Write frame data to FFmpeg stdin
     session
         .stdin
-        .write_all(&frame_data)
+        .write_all(frame_data)
         .await
         .map_err(|e| format!("Failed to write frame: {}", e))?;
     
