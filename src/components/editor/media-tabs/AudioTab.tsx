@@ -4,7 +4,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/Tooltip
 import { AUDIO_LIBRARY_CATEGORIES, ClypraAudioApi, type AudioLibraryCategory, type AudioLibraryItem } from "@/features/audio-library/api/clypraAudioApi";
 import { useAudioLibraryStore } from "@/features/audio-library/store/audioLibraryStore";
 import { DownloadProgress } from "@/components/ui/DownloadProgress";
+import { useUIStore } from "@/store/uiStore";
+import { useProjectStore } from "@/store/projectStore";
 import type { TabProps } from "./types";
+import type { MediaAsset } from "@/types";
 
 export const AudioTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,11 +106,14 @@ const AudioItem: React.FC<AudioItemProps> = ({ item, onAddToTimeline }) => {
   const [imageError, setImageError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { getDownloadState, startDownload, isDownloaded } = useAudioLibraryStore();
+  const { previewAsset } = useUIStore();
+  const { addMediaAsset } = useProjectStore();
   const downloadState = getDownloadState(item.id);
   const isDownloadedFlag = isDownloaded(item.id);
 
   // Handle inline play (stream from URL)
-  const handleInlinePlay = () => {
+  const handleInlinePlay = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering preview
     const audio = audioRef.current;
     if (!audio) return;
     if (isPlaying) {
@@ -122,8 +128,38 @@ const AudioItem: React.FC<AudioItemProps> = ({ item, onAddToTimeline }) => {
       .catch(() => setIsPlaying(false));
   };
 
+  // Handle preview (download first, then open SourcePreview)
+  const handlePreview = async () => {
+    try {
+      // Download if not already cached
+      const cachedFile = await startDownload(item);
+
+      // Create MediaAsset from cached file
+      const mediaAsset: MediaAsset = {
+        id: `audio-library-${item.id}`,
+        name: item.name || "Library Audio",
+        path: cachedFile.localPath,
+        type: "audio",
+        duration: cachedFile.metadata.duration || item.duration,
+        size: cachedFile.size,
+        coverArt: item.coverArtUrl,
+      };
+
+      // Add to project store
+      addMediaAsset(mediaAsset);
+
+      // Open in SourcePreview
+      previewAsset(mediaAsset);
+
+      console.log("[AudioItem] Preview opened with cached file:", cachedFile.localPath);
+    } catch (error) {
+      console.error("[AudioItem] Preview failed:", error);
+    }
+  };
+
   // Handle add to timeline (download first, then add)
-  const handleAddToTimeline = async () => {
+  const handleAddToTimeline = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering preview
     try {
       await startDownload(item);
       // Call parent handler with item
@@ -137,12 +173,12 @@ const AudioItem: React.FC<AudioItemProps> = ({ item, onAddToTimeline }) => {
   const hasError = downloadState?.status === "error";
 
   return (
-    <div className="group flex items-center gap-3 p-1 hover:bg-surface-raised/60 rounded-lg transition-colors">
+    <div onClick={handlePreview} className="group flex items-center gap-3 p-1 bg-surface-raised/40 hover:bg-surface-raised/60 rounded-lg transition-colors cursor-pointer">
       {/* Hidden audio element for inline streaming */}
       <audio ref={audioRef} src={item.audioUrl} preload="none" onEnded={() => setIsPlaying(false)} onPause={() => setIsPlaying(false)} className="hidden" />
 
       {/* Cover Art with Play Overlay */}
-      <button onClick={handleInlinePlay} disabled={isDownloading} className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-raised border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed group/cover cursor-pointer">
+      <button onClick={handleInlinePlay} disabled={isDownloading} className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-raised border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed group/cover">
         {item.coverArtUrl && !imageError ? (
           <img src={item.coverArtUrl} alt={item.name} className="w-full h-full object-cover" onError={() => setImageError(true)} />
         ) : (
@@ -197,7 +233,7 @@ const AudioItem: React.FC<AudioItemProps> = ({ item, onAddToTimeline }) => {
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button onClick={handleAddToTimeline} disabled={isDownloading} className="w-9 h-9 flex items-center justify-center hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
+            <button onClick={handleAddToTimeline} disabled={isDownloading} className="w-9 h-9 flex items-center justify-center hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {isDownloading ? <Download className="w-4 h-4 text-accent animate-pulse" /> : <Plus className="w-4 h-4 text-text-primary" />}
             </button>
           </TooltipTrigger>
