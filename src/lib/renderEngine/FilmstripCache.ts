@@ -454,7 +454,7 @@ export class FilmstripCache {
     }
 
     // Extract timestamps from tile addresses for transport layer
-    const timestampsMs = tileAddresses.map((addr) => addr.timestamp * 1000);
+    const timestampsMs = tileAddresses.map((addr) => Math.round(addr.timestamp * 1000));
 
     // Create entry
     const entry: FilmstripCacheEntry = {

@@ -175,7 +175,7 @@ export function requestRenderArtifacts(opts: RequestRenderArtifactsOptions): () 
         bitmap,
         width: raw.width,
         height: raw.height,
-        timestampMs,
+        timestampMs: Math.round(timestampMs),
         epochId,
       });
     } catch (err) {
@@ -185,7 +185,7 @@ export function requestRenderArtifacts(opts: RequestRenderArtifactsOptions): () 
 
   invoke("get_render_artifact", {
     videoPath,
-    timestampMs,
+    timestampMs: Math.round(timestampMs),
     spatialTiers: spatialTiers.map(spatialTierToLabel),
     effectGraphVersion: 0,
     onArtifact: channel,
@@ -349,7 +349,7 @@ export function requestBatchRenderArtifacts(opts: RequestBatchRenderArtifactsOpt
 
   invoke("get_render_artifacts_batch", {
     videoPath,
-    timestampsMs,
+    timestampsMs: timestampsMs.map(Math.round),
     spatialTiers: spatialTiers.map(spatialTierToLabel),
     effectGraphVersion: 0,
     requestId: reqId,
