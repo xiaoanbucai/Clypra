@@ -510,6 +510,14 @@ export const ProgramPreview: React.FC = () => {
     };
   }, [useCanvasPreview, project, displayWidth, displayHeight]);
 
+  // ── Clear selection when playback starts ──────────────────────────────
+  // Transform overlays should not be visible during playback
+  useEffect(() => {
+    if (clockState.state === "playing") {
+      clearSelection();
+    }
+  }, [clockState.state, clearSelection]);
+
   // ── Handle page visibility changes ────────────────────────────────────
   // When tab goes to background, pause playback to prevent audio drift
   // Browser throttles RAF to ~1fps in background, but audio continues normally
@@ -607,8 +615,8 @@ export const ProgramPreview: React.FC = () => {
                 className="bg-black"
               />
 
-              {/* Transform overlay for selected clips */}
-              <TransformOverlay canvasWidth={canvasWidth} canvasHeight={canvasHeight} scale={scale} viewport={viewport} displayOffset={{ x: offsetX, y: offsetY }} displayWidth={displayWidth} displayHeight={displayHeight} currentTime={currentTime} />
+              {/* Transform overlay for selected clips - only show when paused */}
+              {!isPlaying && <TransformOverlay canvasWidth={canvasWidth} canvasHeight={canvasHeight} scale={scale} viewport={viewport} displayOffset={{ x: offsetX, y: offsetY }} displayWidth={displayWidth} displayHeight={displayHeight} currentTime={currentTime} />}
 
               {/* Title & Action Safe Areas Overlay */}
               <SafeOverlay visible={showSafeOverlay} displayWidth={displayWidth} displayHeight={displayHeight} displayOffset={{ x: offsetX, y: offsetY }} />
