@@ -5,8 +5,8 @@
  * Uses the frame scheduler for consistency with preview.
  */
 
-import { getFrameScheduler } from "../core/scheduler/FrameScheduler";
-import type { Clip, Track, MediaAsset, Project } from "../types";
+import { getFrameScheduler } from "../../core/scheduler/FrameScheduler";
+import type { Clip, Track, MediaAsset, Project } from "../../types";
 
 export interface ExportFrameOptions {
   /** Timeline time to export */

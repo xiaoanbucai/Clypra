@@ -1,5 +1,5 @@
-import { computeTemporalTierFromDensity } from "./renderEngine/tsp";
-import { DEFAULT_SRP_CONFIG, SpatialTier, TEMPORAL_TIER_INTERVALS, TemporalTier, type SrpConfig } from "./renderEngine/types";
+import { computeTemporalTierFromDensity } from "../renderEngine/tsp";
+import { DEFAULT_SRP_CONFIG, SpatialTier, TEMPORAL_TIER_INTERVALS, TemporalTier, type SrpConfig } from "../renderEngine/types";
 
 export const TIMELINE_ZOOM_STEP = 0.1;
 export const TIMELINE_ZOOM_DEFAULT = DEFAULT_SRP_CONFIG[SpatialTier.L1].min;
@@ -74,13 +74,7 @@ export function getZoomFromRatio(ratio: number): number {
 
 export function snapTimelineZoomToTierAnchors(zoom: number, config: SrpConfig = DEFAULT_SRP_CONFIG): number {
   const clamped = clampTimelineZoom(zoom);
-  const anchors = Array.from(
-    new Set([
-      TIMELINE_ZOOM_MIN,
-      TIMELINE_ZOOM_MAX,
-      ...Object.values(config).flatMap((boundary) => [boundary.min, boundary.max]),
-    ]),
-  ).sort((a, b) => a - b);
+  const anchors = Array.from(new Set([TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_MAX, ...Object.values(config).flatMap((boundary) => [boundary.min, boundary.max])])).sort((a, b) => a - b);
 
   return anchors.find((anchor) => Math.abs(clamped - anchor) <= TIMELINE_TIER_SNAP_EPSILON) ?? clamped;
 }

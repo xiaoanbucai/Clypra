@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, RefObject } from "react";
 import { usePlaybackClock, usePlaybackControls } from "@/hooks/usePlaybackClock";
 import { useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
-import { snapToFrameBoundary } from "@/lib/frameTime";
+import { snapToFrameBoundary } from "@/lib/utils/frameTime";
 
 interface PlayheadProps {
   pixelsPerSecond: number;

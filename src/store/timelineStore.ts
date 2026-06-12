@@ -24,13 +24,13 @@
 import { create } from "zustand";
 import type { Track, TrackType, Clip, TextClip, TransitionTimelineItem, TransitionType } from "@/types";
 import type { Gap } from "@/types/gap";
-import { generateId, getCounter } from "@/lib/id";
-import { detectGaps, createGap, insertGapWithRipple, removeGapWithRipple, resizeGap, packTrack } from "@/lib/gapEngine";
-import { recalculateTextClipBounds } from "@/lib/textClip";
+import { generateId, getCounter } from "@/lib/utils/id";
+import { detectGaps, createGap, insertGapWithRipple, removeGapWithRipple, resizeGap, packTrack } from "@/lib/timeline/gapEngine";
+import { recalculateTextClipBounds } from "@/lib/text/textClip";
 import { useUIStore } from "./uiStore";
 import { useProjectStore } from "./projectStore";
-import { clampTimelinePixelsPerSecond, clampTimelineZoom, TIMELINE_PPS_PER_ZOOM, TIMELINE_ZOOM_DEFAULT } from "../lib/timelineZoom";
-import { getTimelineContentEnd, normalizeClipTiming } from "@/lib/timelineClip";
+import { clampTimelinePixelsPerSecond, clampTimelineZoom, TIMELINE_PPS_PER_ZOOM, TIMELINE_ZOOM_DEFAULT } from "../lib/timeline/timelineZoom";
+import { getTimelineContentEnd, normalizeClipTiming } from "@/lib/timeline/timelineClip";
 import { autoSaveMiddleware } from "./middleware/autoSaveMiddleware";
 
 interface TimelineStore {

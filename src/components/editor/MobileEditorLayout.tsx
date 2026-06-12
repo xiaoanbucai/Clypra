@@ -11,10 +11,10 @@ import { useProjectStore } from "@/store/projectStore";
 import { useUIStore } from "@/store/uiStore";
 import { useHistoryStore } from "@/store/historyStore";
 import { useMediaImport } from "@/hooks/useMediaImport";
-import { createClipFromAsset } from "@/lib/timelineClip";
-import { createTextClip, TEXT_PRESETS } from "@/lib/textClip";
-import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequenceAutoAspect";
-import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "@/lib/placementPolicy";
+import { createClipFromAsset } from "@/lib/timeline/timelineClip";
+import { createTextClip, TEXT_PRESETS } from "@/lib/text/textClip";
+import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequence/sequenceAutoAspect";
+import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "@/lib/timeline/placementPolicy";
 import { getPlaybackClock } from "@/hooks/usePlaybackClock";
 import type { TabType } from "./media-tabs";
 import type { MediaAsset } from "@/types";
@@ -215,7 +215,7 @@ export const MobileEditorLayout: React.FC = () => {
       (async () => {
         const { appCacheDir, join } = await import("@tauri-apps/api/path");
         const appCache = await appCacheDir();
-        
+
         let relativePath = "";
         if (cachedSticker.format === "lottie") {
           relativePath = cachedSticker.localImagePath || "";
@@ -252,7 +252,7 @@ export const MobileEditorLayout: React.FC = () => {
           playheadTime: getPlaybackClock().time,
           sequenceEndTime: getTimelineEndTime(),
         });
-        
+
         let targetTrackId = placement.targetTrackId;
         if (placement.shouldCreateTrack || !targetTrackId) {
           const insertIndex = getInsertIndexForNewTrack(useTimelineStore.getState().tracks, placement.trackType);

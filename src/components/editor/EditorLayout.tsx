@@ -6,10 +6,10 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { Timeline } from "./timeline/Timeline";
 import { getInsertIndexForNewTrack, useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
-import { createClipFromAsset } from "@/lib/timelineClip";
-import { createTextClip, TEXT_PRESETS } from "@/lib/textClip";
-import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequenceAutoAspect";
-import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "@/lib/placementPolicy";
+import { createClipFromAsset } from "@/lib/timeline/timelineClip";
+import { createTextClip, TEXT_PRESETS } from "@/lib/text/textClip";
+import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequence/sequenceAutoAspect";
+import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "@/lib/timeline/placementPolicy";
 import { getPlaybackClock } from "@/hooks/usePlaybackClock";
 import { useWindowSize } from "@/hooks/useWindowSize";
 import { MobileEditorLayout } from "./MobileEditorLayout";
@@ -216,7 +216,7 @@ export const EditorLayout: React.FC = () => {
       (async () => {
         const { appCacheDir, join } = await import("@tauri-apps/api/path");
         const appCache = await appCacheDir();
-        
+
         let relativePath = "";
         if (cachedSticker.format === "lottie") {
           relativePath = cachedSticker.localImagePath || "";
@@ -253,7 +253,7 @@ export const EditorLayout: React.FC = () => {
           playheadTime: getPlaybackClock().time,
           sequenceEndTime: getTimelineEndTime(),
         });
-        
+
         let targetTrackId = placement.targetTrackId;
         if (placement.shouldCreateTrack || !targetTrackId) {
           const insertIndex = getInsertIndexForNewTrack(useTimelineStore.getState().tracks, placement.trackType);
@@ -300,25 +300,17 @@ export const EditorLayout: React.FC = () => {
           const asset = mediaAssets.find((a) => a.id === c.mediaId);
           return asset && (asset.type === "video" || asset.type === "image");
         });
-        targetClip = visualClips.find(
-          (c) => currentTime >= c.startTime && currentTime <= c.startTime + c.duration
-        );
+        targetClip = visualClips.find((c) => currentTime >= c.startTime && currentTime <= c.startTime + c.duration);
       }
 
       if (!targetClip) {
-        useProjectStore.getState().showToast(
-          `Select a video or image clip to apply this ${type === "effects" ? "effect" : "filter"}`,
-          "warning"
-        );
+        useProjectStore.getState().showToast(`Select a video or image clip to apply this ${type === "effects" ? "effect" : "filter"}`, "warning");
         return;
       }
 
       const asset = mediaAssets.find((a) => a.id === targetClip.mediaId);
       if (asset?.type !== "video" && asset?.type !== "image") {
-        useProjectStore.getState().showToast(
-          "Effects and filters can only be applied to video or image clips",
-          "warning"
-        );
+        useProjectStore.getState().showToast("Effects and filters can only be applied to video or image clips", "warning");
         return;
       }
 
@@ -331,10 +323,7 @@ export const EditorLayout: React.FC = () => {
           return;
         }
 
-        const updatedEffects = [
-          ...currentEffects,
-          { id: item.id, name: item.name, intensity: 0.5 },
-        ];
+        const updatedEffects = [...currentEffects, { id: item.id, name: item.name, intensity: 0.5 }];
 
         updateClip(targetClip.id, { effects: updatedEffects });
         useProjectStore.getState().showToast(`Applied ${item.name} effect`);

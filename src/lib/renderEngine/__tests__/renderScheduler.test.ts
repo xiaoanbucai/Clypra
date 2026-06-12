@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { RenderScheduler } from "../renderScheduler";
 import { Priority, SpatialTier } from "../types";
 import type { RenderJob } from "../types";
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 
 function makeJob(overrides: Partial<RenderJob> = {}): RenderJob {
   return {

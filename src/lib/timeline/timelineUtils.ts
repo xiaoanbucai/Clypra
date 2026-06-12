@@ -1,18 +1,18 @@
 // Re-export new render engine types (non-breaking alongside existing DENSITY_CONFIGS)
-export type { SpatialTier, TemporalTier, VelocityState } from "./renderEngine/types";
-export { VELOCITY_THRESHOLDS, classifyVelocity } from "./renderEngine/types";
+export type { SpatialTier, TemporalTier, VelocityState } from "../renderEngine/types";
+export { VELOCITY_THRESHOLDS, classifyVelocity } from "../renderEngine/types";
 
-import type { DragItem, Track, Clip, DensityConfig, DensityLevel } from "../types";
-import { useTimelineStore } from "../store/timelineStore";
-import { useProjectStore } from "../store/projectStore";
-import { useHistoryStore } from "../store/historyStore";
-import { AddTrackCommand, AddClipCommand, DeleteClipCommand } from "../core/history/commands";
-import { capitalize } from "./utils";
-import { DensityLevel as DensityLevelEnum } from "../types";
+import type { DragItem, Track, Clip, DensityConfig, DensityLevel } from "../../types";
+import { useTimelineStore } from "../../store/timelineStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useHistoryStore } from "../../store/historyStore";
+import { AddTrackCommand, AddClipCommand, DeleteClipCommand } from "../../core/history/commands";
+import { capitalize } from "../utils";
+import { DensityLevel as DensityLevelEnum } from "../../types";
 import { createClipFromAsset } from "./timelineClip";
-import { autoAdaptSequenceForFirstVisualClip } from "./sequenceAutoAspect";
+import { autoAdaptSequenceForFirstVisualClip } from "../sequence/sequenceAutoAspect";
 import { DEFAULT_PLACEMENT_POLICY, resolveClipStartTime } from "./placementPolicy";
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 
 // Density configurations mapping zoom levels to extraction densities. Each configuration defines the time interval between thumbnails and the zoom range.
 export const DENSITY_CONFIGS: DensityConfig[] = [

@@ -2,7 +2,7 @@ import React from "react";
 import { Volume2, VolumeX, Lock, Unlock, Eye, EyeOff, Minimize2 } from "lucide-react";
 import { useTimelineStore } from "@/store/timelineStore";
 import { useUIStore } from "@/store/uiStore";
-import { GapManager } from "@/lib/gapManager";
+import { GapManager } from "@/lib/timeline/gapManager";
 import type { Track } from "@/types";
 
 interface TrackLabelProps {

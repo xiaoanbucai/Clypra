@@ -17,9 +17,9 @@ import { useEffect, useRef, useMemo } from "react";
 import { platform } from "@/core/platform";
 import { cn } from "@/lib/utils";
 import { createRasterSurface, type AnyRasterSurface } from "@/lib/renderEngine/webglRasterSurface";
-import { useFilmstrip } from "@/lib/useFilmstrip";
-import { getFilmstripTileWidthForTier } from "@/lib/filmstripLayout";
-import { normalizePathForTauriInvoke } from "@/lib/tauri";
+import { useFilmstrip } from "@/lib/filmstrip/useFilmstrip";
+import { getFilmstripTileWidthForTier } from "@/lib/filmstrip/filmstripLayout";
+import { normalizePathForTauriInvoke } from "@/lib/platform/tauri";
 import type { Clip, MediaAsset } from "@/types";
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif)$/i;

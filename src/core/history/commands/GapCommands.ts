@@ -9,7 +9,7 @@ import type { Command } from "../Command";
 import { generateCommandId } from "../Command";
 import type { Gap } from "@/types/gap";
 import type { Clip } from "@/types";
-import { insertGapWithRipple, createGap } from "@/lib/gapEngine";
+import { insertGapWithRipple, createGap } from "@/lib/timeline/gapEngine";
 
 interface TimelineState {
   clips: Clip[];

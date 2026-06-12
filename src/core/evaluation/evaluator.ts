@@ -20,14 +20,14 @@
 import type { Clip, Track, MediaAsset, Project, TextClip, TransitionTimelineItem } from "@/types";
 import type { EvaluatedScene, EvaluatedVisualLayer, EvaluatedMediaLayer, EvaluatedTextLayer, EvaluatedAudioLayer, EvaluatedTransition, SceneMetadata, BlendMode } from "./types";
 import { toCompositorClips } from "../timeline/adapter";
-import { getClipEndTime } from "@/lib/timelineClip";
+import { getClipEndTime } from "@/lib/timeline/timelineClip";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 const isExternalOrDataUrl = (value: string) => value.startsWith("data:") || value.startsWith("http") || value.startsWith("asset://");
 import { getEvaluationCache, computeClipVersion } from "./cache";
 import { evaluateProperty } from "./animation";
 import { resolveClipSourceTime } from "../timeline/sourceTime";
-import { calculateTextAnimationState } from "@/lib/textAnimation";
+import { calculateTextAnimationState } from "@/lib/text/textAnimation";
 
 /**
  * Evaluate the NLE timeline at a specific time.
@@ -191,9 +191,7 @@ export function evaluateTimelineScene(time: number, clips: Clip[], tracks: Track
       clampToRange: true,
       frameRate: project?.frameRate ?? 30,
     }).sourceTime;
-    const sourcePath = asset.path
-      ? (isExternalOrDataUrl(asset.path) ? asset.path : convertFileSrc(asset.path))
-      : asset.posterFrame || "";
+    const sourcePath = asset.path ? (isExternalOrDataUrl(asset.path) ? asset.path : convertFileSrc(asset.path)) : asset.posterFrame || "";
     if (!sourcePath) continue;
 
     const transitionState = evaluateTransitionState(clip, transitionWindows);
@@ -250,9 +248,7 @@ export function evaluateTimelineScene(time: number, clips: Clip[], tracks: Track
       clampToRange: true,
       frameRate: project?.frameRate ?? 30,
     }).sourceTime;
-    const sourcePath = asset.path
-      ? (isExternalOrDataUrl(asset.path) ? asset.path : convertFileSrc(asset.path))
-      : "";
+    const sourcePath = asset.path ? (isExternalOrDataUrl(asset.path) ? asset.path : convertFileSrc(asset.path)) : "";
     if (!sourcePath) continue;
 
     audioLayers.push({

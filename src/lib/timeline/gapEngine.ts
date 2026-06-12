@@ -7,7 +7,7 @@
 
 import type { Clip } from "@/types";
 import type { Gap, GapType, GapSource, GapValidation, GapOperationResult } from "@/types/gap";
-import { generateId } from "./id";
+import { generateId } from "../utils/id";
 
 /**
  * Detect gaps between clips on a track

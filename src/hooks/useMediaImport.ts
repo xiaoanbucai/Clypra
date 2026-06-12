@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useProjectStore } from "../store/projectStore";
 import type { MediaAsset } from "../types";
-import { generateSimpleWaveform } from "../lib/audioWaveformGenerator";
-import { generateId } from "@/lib/id";
+import { generateSimpleWaveform } from "../lib/audio/audioWaveformGenerator";
+import { generateId } from "@/lib/utils/id";
 import { platform } from "@/core/platform";
 import { DEFAULT_STILL_DURATION_SECONDS } from "../constants/config";
 

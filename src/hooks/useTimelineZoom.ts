@@ -1,7 +1,7 @@
 import { useEffect, RefObject } from "react";
 import { useTimelineStore } from "@/store/timelineStore";
-import { getTimelineViewportEnd } from "@/lib/timelineClip";
-import { TIMELINE_MAX_PPS, TIMELINE_MIN_PPS } from "@/lib/timelineZoom";
+import { getTimelineViewportEnd } from "@/lib/timeline/timelineClip";
+import { TIMELINE_MAX_PPS, TIMELINE_MIN_PPS } from "@/lib/timeline/timelineZoom";
 
 const WHEEL_ZOOM_SENSITIVITY = 0.006;
 const WHEEL_ZOOM_SPEED_MULTIPLIER = 2.5;

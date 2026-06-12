@@ -10,7 +10,7 @@ import { getActiveSessionOrNull } from "@/core/runtime/ProjectSession";
 import { useUIStore } from "@/store/uiStore";
 import { useTimelineStore, getInsertIndexForNewTrack } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
-import { createTextClip } from "@/lib/textClip";
+import { createTextClip } from "@/lib/text/textClip";
 import { ClypraApi } from "@/features/text-effects/api/clypraApi";
 import { useTemplateStore } from "@/features/text-templates/templateStore";
 import { useEffectsStore } from "@/features/text-effects/store/effectsStore";

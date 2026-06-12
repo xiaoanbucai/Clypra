@@ -1,9 +1,9 @@
 import React, { useRef, useEffect, useState } from "react";
 import { platform } from "@/core/platform";
-import { drawProfessionalWaveform, convertLegacyWaveform, getThemeAccentRgb, hexToRgb } from "@/lib/canvasUtils";
+import { drawProfessionalWaveform, convertLegacyWaveform, getThemeAccentRgb, hexToRgb } from "@/lib/utils/canvasUtils";
 import type { WaveformBucket } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
-import { normalizePathForTauriInvoke } from "@/lib/tauri";
+import { normalizePathForTauriInvoke } from "@/lib/platform/tauri";
 
 interface TimelineWaveformProps {
   audioPath: string;

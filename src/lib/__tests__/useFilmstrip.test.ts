@@ -36,7 +36,7 @@ vi.mock("@/hooks/useRenderRuntime", () => ({
 }));
 
 // Import AFTER mocks are registered
-const { useFilmstrip } = await import("../useFilmstrip");
+const { useFilmstrip } = await import("../filmstrip/useFilmstrip");
 
 // ─── RAF test control ────────────────────────────────────────────────────────
 

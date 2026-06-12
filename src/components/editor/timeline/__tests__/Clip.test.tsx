@@ -8,8 +8,8 @@ import type { Clip as ClipType, MediaAsset } from "@/types";
 
 const filmstripFrames = ["data:image/png;base64,frame0", "data:image/png;base64,frame1", "data:image/png;base64,frame2", "data:image/png;base64,frame3"];
 
-vi.mock("@/lib/tauri", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/tauri")>();
+vi.mock("@/lib/platform/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/platform/tauri")>();
   return {
     ...actual,
     extractFilmstripFrames: vi.fn(() => Promise.resolve(filmstripFrames)),

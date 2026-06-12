@@ -5,7 +5,7 @@
 
 import { create } from "zustand";
 import type { StickerItem } from "../api/clypraStickersApi";
-import { stickerCacheManager, type CachedSticker } from "@/lib/stickerCache";
+import { stickerCacheManager, type CachedSticker } from "@/lib/cache/stickerCache";
 
 export type DownloadStatus = "idle" | "downloading" | "completed" | "error";
 
@@ -44,7 +44,7 @@ export const useStickersStore = create<StickersStore>((set, get) => ({
       // we'll load cached items directly into the store.
       // Let's implement a clean read from stickerCacheManager
       const downloads: Record<string, StickerDownloadState> = {};
-      
+
       // Let's access the index via a get method or by adding an index list helper
       // Wait, we can just load the cached items on-demand or check if it's cached in getDownloadState.
       // But wait! Let's check how audioCacheManager did it.
@@ -179,4 +179,3 @@ export const useStickersStore = create<StickersStore>((set, get) => ({
 
 // Initialize cache on startup
 useStickersStore.getState().initializeCache();
-

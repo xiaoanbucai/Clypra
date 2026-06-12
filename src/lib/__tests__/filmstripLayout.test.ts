@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_FILMSTRIP_TILE_WIDTH_PX,
-  computeFilmstripTileCount,
-  generateFilmstripSlotTimestamps,
-  getFilmstripTileWidthForTier,
-  getFrameAspectRatio,
-} from "../filmstripLayout";
+import { DEFAULT_FILMSTRIP_TILE_WIDTH_PX, computeFilmstripTileCount, generateFilmstripSlotTimestamps, getFilmstripTileWidthForTier, getFrameAspectRatio } from "../filmstrip/filmstripLayout";
 import { SpatialTier } from "../renderEngine/types";
 
 describe("filmstripLayout", () => {
@@ -28,12 +22,14 @@ describe("filmstripLayout", () => {
   });
 
   it("derives timestamps from visible tile slots", () => {
-    expect(generateFilmstripSlotTimestamps({
-      trimIn: 0,
-      trimOut: 10,
-      duration: 10,
-      clipWidthPx: 300,
-      tileWidthPx: 100,
-    })).toEqual([1.667, 5, 8.333]);
+    expect(
+      generateFilmstripSlotTimestamps({
+        trimIn: 0,
+        trimOut: 10,
+        duration: 10,
+        clipWidthPx: 300,
+        tileWidthPx: 100,
+      }),
+    ).toEqual([1.667, 5, 8.333]);
   });
 });

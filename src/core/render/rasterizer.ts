@@ -21,7 +21,7 @@ import { defaultConfig as engineDefaultConfig, evaluateScene as engineEvaluateSc
 import { useEffectsStore } from "../../features/text-effects/store/effectsStore";
 import { invalidateEvaluationCache } from "../evaluation/evaluator";
 import { useTimelineStore } from "../../store/timelineStore";
-import { effectBleed } from "../../lib/textClip";
+import { effectBleed } from "../../lib/text/textClip";
 import lottie from "lottie-web";
 import { useStickersStore } from "../../features/stickers/store/stickersStore";
 
@@ -249,24 +249,24 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
         await useStickersStore.getState().initializeCache();
         cachedSticker = useStickersStore.getState().getCachedSticker(stickerId);
       }
-      
+
       if (cachedSticker && cachedSticker.format === "lottie") {
         let cacheEntry = lottieRenderCache.get(layer.clipId);
-        
+
         if (!cacheEntry || cacheEntry.stickerId !== stickerId) {
           if (cacheEntry) {
             cacheEntry.anim.destroy();
             cacheEntry.container.remove();
           }
-          
+
           try {
-            const { stickerCacheManager } = await import("@/lib/stickerCache");
+            const { stickerCacheManager } = await import("@/lib/cache/stickerCache");
             const { appCacheDir, join } = await import("@tauri-apps/api/path");
             const appCache = await appCacheDir();
             const absoluteLottiePath = await join(appCache, cachedSticker.localAnimationPath!);
-            
+
             const lottieData = await stickerCacheManager.readLottieJson(absoluteLottiePath);
-            
+
             const container = document.createElement("div");
             container.style.width = `${width}px`;
             container.style.height = `${height}px`;
@@ -274,7 +274,7 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
             container.style.left = "-9999px";
             container.style.top = "-9999px";
             document.body.appendChild(container);
-            
+
             const anim = lottie.loadAnimation({
               container,
               renderer: "canvas",
@@ -282,10 +282,10 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
               loop: true,
               animationData: JSON.parse(JSON.stringify(lottieData)),
             });
-            
+
             anim.goToAndStop(0, true);
             await Promise.resolve();
-            
+
             const canvas = container.querySelector("canvas") as HTMLCanvasElement;
             if (canvas) {
               cacheEntry = { anim, canvas, container, stickerId };
@@ -295,15 +295,15 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
             console.error("[Rasterizer] Failed to load Lottie animation:", err);
           }
         }
-        
+
         if (cacheEntry) {
           const totalFrames = cacheEntry.anim.totalFrames;
           const frameRate = cacheEntry.anim.frameRate || 30;
           const frame = Math.floor(layer.sourceTime * frameRate) % totalFrames;
-          
+
           cacheEntry.anim.goToAndStop(frame, true);
           await Promise.resolve();
-          
+
           drawMediaWithSourceRotation(ctx, cacheEntry.canvas, width, height, layer.sourceRotation, layer.effects, layer.filter);
           return;
         }
@@ -429,15 +429,7 @@ function drawLoadingPlaceholder(ctx: CanvasRenderingContext2D | OffscreenCanvasR
  * @param height - Target height (layer height in canvas)
  * @param sourceRotation - Rotation from container metadata (0, 90, 180, 270)
  */
-function drawMediaWithSourceRotation(
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  source: HTMLVideoElement | ImageBitmap | HTMLCanvasElement,
-  width: number,
-  height: number,
-  sourceRotation?: number,
-  effects?: import("../evaluation/types").EvaluatedEffect[],
-  filter?: { id: string; name: string; intensity: number }
-): void {
+function drawMediaWithSourceRotation(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, source: HTMLVideoElement | ImageBitmap | HTMLCanvasElement, width: number, height: number, sourceRotation?: number, effects?: import("../evaluation/types").EvaluatedEffect[], filter?: { id: string; name: string; intensity: number }): void {
   ctx.save();
 
   // 1. Build and apply CSS filter string

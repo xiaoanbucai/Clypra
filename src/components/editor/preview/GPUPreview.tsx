@@ -21,12 +21,12 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { GPUTextureCache } from "@/lib/gpuTextureCache";
-import { globalGPUCache } from "@/lib/globalGPUCache";
-import { performanceMetrics } from "@/lib/performanceMetrics";
-import { generateId } from "@/lib/id";
+import { GPUTextureCache } from "@/lib/cache/gpuTextureCache";
+import { globalGPUCache } from "@/lib/cache/globalGPUCache";
+import { performanceMetrics } from "@/lib/utils/performanceMetrics";
+import { generateId } from "@/lib/utils/id";
 import { invoke } from "@tauri-apps/api/core";
-import { normalizePathForTauriInvoke } from "@/lib/tauri";
+import { normalizePathForTauriInvoke } from "@/lib/platform/tauri";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -107,17 +107,7 @@ export interface GPUPreviewProps {
 
 export function GPUPreview({ videoPath, currentTime, isPlaying, width, height, duration, frameRate = 30, onTimeUpdate, className }: GPUPreviewProps) {
   if (!isTauri) {
-    return (
-      <HTML5VideoFallback
-        videoPath={videoPath}
-        currentTime={currentTime}
-        isPlaying={isPlaying}
-        width={width}
-        height={height}
-        onTimeUpdate={onTimeUpdate}
-        className={className}
-      />
-    );
+    return <HTML5VideoFallback videoPath={videoPath} currentTime={currentTime} isPlaying={isPlaying} width={width} height={height} onTimeUpdate={onTimeUpdate} className={className} />;
   }
 
   const canvasRef = useRef<HTMLCanvasElement>(null);

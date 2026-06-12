@@ -221,6 +221,15 @@ Clypra relies on a powerful and scalable state architecture using **Zustand**. S
 - Async filmstrip generation to avoid blocking UI
 - Proper cleanup to prevent memory leaks
 
+## Documentation
+
+- [Architecture Overview](./ARCHITECTURE.md)
+- [Contributing Guide](./CONTRIBUTING.md)
+- [AI Development Guidelines](./docs/GEMINI.md)
+- [Manual Testing Guide](./docs/MANUAL_TESTING_GUIDE.md)
+- [Video Effects Checklist](./docs/VIDEO_EFFECTS_CHECKLIST.md)
+- [Video Effects Architecture](./docs/video-effects/VIDEO_EFFECTS_ARCHITECTURE.md)
+
 ## Contributing
 
 We welcome contributions from the community! Whether it's:

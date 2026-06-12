@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getDensityForZoom, DENSITY_CONFIGS, generateTimestampGrid, getIntervalForDensity } from "../timelineUtils";
+import { getDensityForZoom, DENSITY_CONFIGS, generateTimestampGrid, getIntervalForDensity } from "../timeline/timelineUtils";
 import { DensityLevel } from "@/types";
 
 describe("getDensityForZoom", () => {

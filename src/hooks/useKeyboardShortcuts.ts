@@ -6,7 +6,7 @@ import { useUIStore } from "@/store/uiStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useHistoryStore } from "@/store/historyStore";
 import { EditingActions } from "@/core/interactions";
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 
 let copiedClipsClipboard: Array<{
   trackId: string;
@@ -395,7 +395,7 @@ export const useKeyboardShortcuts = () => {
         }
 
         // Import GapManager synchronously
-        import("@/lib/gapManager").then(({ GapManager }) => {
+        import("@/lib/timeline/gapManager").then(({ GapManager }) => {
           const unprotectedCount = GapManager.countUnprotectedGaps(selectedTrackId);
 
           if (unprotectedCount === 0) {

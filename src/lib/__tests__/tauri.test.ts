@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { normalizePathForTauriInvoke, decodeFrame, decodeFramesStreaming, releaseVideoDecoder } from "../tauri";
+import { normalizePathForTauriInvoke, decodeFrame, decodeFramesStreaming, releaseVideoDecoder } from "../platform/tauri";
 import { DensityLevel } from "@/types";
 
 // Stub Tauri internals globally for this test suite

@@ -10,7 +10,7 @@
  */
 
 import type { CompositorClip, RenderLayer, RenderStack, EvaluatedClip } from "./types";
-import { getClipEndTime } from "@/lib/timelineClip";
+import { getClipEndTime } from "@/lib/timeline/timelineClip";
 
 /**
  * Resolve the complete render stack at a specific time.

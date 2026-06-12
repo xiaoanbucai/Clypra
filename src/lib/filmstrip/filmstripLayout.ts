@@ -1,4 +1,4 @@
-import { SpatialTier, SPATIAL_TIER_DIMS } from "./renderEngine/types";
+import { SpatialTier, SPATIAL_TIER_DIMS } from "../renderEngine/types";
 
 export const DEFAULT_FILMSTRIP_TILE_WIDTH_PX = 72;
 export const MAX_FILMSTRIP_SLOT_SAMPLES = 240;
@@ -23,19 +23,15 @@ export function getFilmstripTileWidthForTier(spatialTier: SpatialTier | null | u
   return FILMSTRIP_TILE_WIDTH_BY_TIER[spatialTier] ?? DEFAULT_FILMSTRIP_TILE_WIDTH_PX;
 }
 
-export function getReadableFilmstripTier(
-  baseTier: SpatialTier,
-  tileWidthPx: number,
-  stripHeightPx: number,
-  dpr: number,
-): SpatialTier {
+export function getReadableFilmstripTier(baseTier: SpatialTier, tileWidthPx: number, stripHeightPx: number, dpr: number): SpatialTier {
   const requiredWidth = tileWidthPx * dpr;
   const requiredHeight = stripHeightPx * dpr;
   const tiers = [SpatialTier.L0, SpatialTier.L1, SpatialTier.L2, SpatialTier.L3];
-  const readableTier = tiers.find((tier) => {
-    const [width, height] = SPATIAL_TIER_DIMS[tier];
-    return width >= requiredWidth && height >= requiredHeight;
-  }) ?? SpatialTier.L3;
+  const readableTier =
+    tiers.find((tier) => {
+      const [width, height] = SPATIAL_TIER_DIMS[tier];
+      return width >= requiredWidth && height >= requiredHeight;
+    }) ?? SpatialTier.L3;
 
   return Math.max(baseTier, readableTier) as SpatialTier;
 }
@@ -46,13 +42,7 @@ export function computeFilmstripTileCount(clipWidthPx: number, tileWidthPx: numb
   return Math.max(1, Math.ceil(clipWidthPx / tileWidthPx));
 }
 
-export function generateFilmstripSlotTimestamps(options: {
-  trimIn: number;
-  trimOut: number;
-  duration: number;
-  clipWidthPx: number;
-  tileWidthPx: number;
-}): number[] {
+export function generateFilmstripSlotTimestamps(options: { trimIn: number; trimOut: number; duration: number; clipWidthPx: number; tileWidthPx: number }): number[] {
   const { duration, clipWidthPx, tileWidthPx } = options;
   const start = Math.min(Math.max(options.trimIn, 0), duration);
   const end = Math.min(Math.max(options.trimOut, start), duration);

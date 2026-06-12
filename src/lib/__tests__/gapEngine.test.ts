@@ -6,25 +6,26 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { detectGaps, createGap, validateGap, insertGapWithRipple, removeGapWithRipple, resizeGap, packTrack, mergeAdjacentGaps, getTimelineItems } from "./gapEngine";
+import { detectGaps, createGap, validateGap, insertGapWithRipple, removeGapWithRipple, resizeGap, packTrack, mergeAdjacentGaps, getTimelineItems } from "../timeline/gapEngine";
 import type { Clip } from "@/types";
 import type { Gap } from "@/types/gap";
 
 // Helper to create test clips
-const createClip = (id: string, trackId: string, startTime: number, duration: number): Clip => ({
-  id,
-  trackId,
-  startTime,
-  duration,
-  mediaId: `media-${id}`,
-  trimIn: 0,
-  trimOut: duration,
-  transform: { x: 0, y: 0, scale: 1, rotation: 0 },
-  effects: [],
-  volume: 1,
-  speed: 1,
-  locked: false,
-} as any as Clip);
+const createClip = (id: string, trackId: string, startTime: number, duration: number): Clip =>
+  ({
+    id,
+    trackId,
+    startTime,
+    duration,
+    mediaId: `media-${id}`,
+    trimIn: 0,
+    trimOut: duration,
+    transform: { x: 0, y: 0, scale: 1, rotation: 0 },
+    effects: [],
+    volume: 1,
+    speed: 1,
+    locked: false,
+  }) as any as Clip;
 
 describe("gapEngine", () => {
   describe("detectGaps", () => {

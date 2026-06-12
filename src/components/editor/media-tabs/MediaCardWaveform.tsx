@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
-import { drawProfessionalWaveform, convertLegacyWaveform, getThemeAccentRgb } from "@/lib/canvasUtils";
+import { drawProfessionalWaveform, convertLegacyWaveform, getThemeAccentRgb } from "@/lib/utils/canvasUtils";
 import type { WaveformBucket } from "@/types";
 
 interface MediaCardWaveformProps {

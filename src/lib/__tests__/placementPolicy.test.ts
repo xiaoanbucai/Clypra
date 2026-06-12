@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clip, Track } from "@/types";
-import { resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "../placementPolicy";
+import { resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "../timeline/placementPolicy";
 
 function makeTrack(id: string, type: Track["type"], locked = false): Track {
   return {

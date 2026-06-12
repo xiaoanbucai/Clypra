@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Lock, Trash2 } from "lucide-react";
 import { useUIStore } from "@/store/uiStore";
-import { GapManager } from "@/lib/gapManager";
+import { GapManager } from "@/lib/timeline/gapManager";
 import type { Gap } from "@/types/gap";
 
 interface GapIndicatorProps {

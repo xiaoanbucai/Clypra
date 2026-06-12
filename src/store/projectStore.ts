@@ -27,7 +27,7 @@ import { create } from "zustand";
 import type { Project, MediaAsset, TransitionTimelineItem } from "@/types";
 import { MAX_PROJECT_NAME_LENGTH } from "@/types";
 import { toRustProject } from "@/types/serialization";
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 import { useSettingsStore } from "./settingsStore";
 // import { TIMELINE_PPS_PER_ZOOM, TIMELINE_ZOOM_DEFAULT } from "@/lib/timelineZoom";
 
@@ -93,9 +93,7 @@ async function preloadTextEffectDefinitionsFromClips(clips: any[] | undefined): 
   if (!clips?.length) return;
 
   const styleIds = Array.from(new Set(clips.map((clip) => clip?.styleId).filter((id): id is string => typeof id === "string" && id.length > 0)));
-  const embeddedDefinitions = clips
-    .map((clip) => clip?.styleDefinition ?? clip?.style_definition)
-    .filter((definition) => definition && typeof definition.id === "string");
+  const embeddedDefinitions = clips.map((clip) => clip?.styleDefinition ?? clip?.style_definition).filter((definition) => definition && typeof definition.id === "string");
 
   if (styleIds.length === 0 && embeddedDefinitions.length === 0) return;
 
@@ -154,10 +152,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       aspectRatio: aspectRatio as any,
       canvasWidth: dims.width,
       canvasHeight: dims.height,
-	      frameRate,
-	      duration: 0,
-	      timelineSchemaVersion: 1,
-	    };
+      frameRate,
+      duration: 0,
+      timelineSchemaVersion: 1,
+    };
     set({ project, mediaAssets: [] });
 
     // Let timelineStore reset its own state
@@ -197,10 +195,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     try {
       const { useTimelineStore } = await import("./timelineStore");
       useTimelineStore.getState().hydrateFromProject({
-	        tracks: payload?.tracks ?? [],
-	        clips: payload?.clips ?? [],
-	        transitions: payload?.transitions ?? [],
-	      });
+        tracks: payload?.tracks ?? [],
+        clips: payload?.clips ?? [],
+        transitions: payload?.transitions ?? [],
+      });
     } catch (err) {
       // On error, reset timeline to empty state
       import("./timelineStore").then(({ useTimelineStore }) => useTimelineStore.getState().hydrateFromProject({ tracks: [], clips: [], transitions: [] })).catch((resetErr) => console.error("[LoadProject] Failed to reset timeline:", resetErr));
@@ -311,10 +309,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (project) {
         try {
           const { useTimelineStore } = await import("./timelineStore");
-	          const { tracks, clips, transitions } = useTimelineStore.getState();
+          const { tracks, clips, transitions } = useTimelineStore.getState();
 
-	          // Convert camelCase to snake_case using centralized serialization
-	          const rustProject = toRustProject(project, { tracks, clips, transitions, mediaAssets });
+          // Convert camelCase to snake_case using centralized serialization
+          const rustProject = toRustProject(project, { tracks, clips, transitions, mediaAssets });
 
           const { invoke } = await import("@tauri-apps/api/core");
           await invoke("save_project", {
@@ -365,10 +363,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       try {
         // Import timeline store to get tracks and clips
         const { useTimelineStore } = await import("./timelineStore");
-	        const { tracks, clips, transitions } = useTimelineStore.getState();
+        const { tracks, clips, transitions } = useTimelineStore.getState();
 
-	        // Convert camelCase to snake_case using centralized serialization
-	        const rustProject = toRustProject(project, { tracks, clips, transitions, mediaAssets });
+        // Convert camelCase to snake_case using centralized serialization
+        const rustProject = toRustProject(project, { tracks, clips, transitions, mediaAssets });
 
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("save_project", {

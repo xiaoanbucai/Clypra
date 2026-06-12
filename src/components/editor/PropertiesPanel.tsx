@@ -5,8 +5,8 @@ import { useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useHistoryStore } from "@/store/historyStore";
 import { TransformClipCommand } from "@/core/history/commands/TransformCommand";
-import { calculateClipDimensions, type ClipFitModeExtended } from "@/lib/timelineClip";
-import { recalculateTextClipBounds } from "@/lib/textClip";
+import { calculateClipDimensions, type ClipFitModeExtended } from "@/lib/timeline/timelineClip";
+import { recalculateTextClipBounds } from "@/lib/text/textClip";
 import type { Clip, TextClip } from "@/types";
 import { usePresetStore } from "@/store/presetStore";
 
@@ -156,9 +156,7 @@ export const PropertiesPanel: React.FC = () => {
   // Clip type info for the header
   const typeInfo = getClipTypeInfo(selectedAsset?.type, !!isTextClip);
   const TypeIcon = typeInfo.icon;
-  const clipName = isTextClip
-    ? (textClip.text || "Text").slice(0, 24)
-    : selectedAsset?.name || "Clip";
+  const clipName = isTextClip ? (textClip.text || "Text").slice(0, 24) : selectedAsset?.name || "Clip";
   const clipDuration = selectedClip.duration.toFixed(1);
 
   return (
@@ -189,15 +187,7 @@ export const PropertiesPanel: React.FC = () => {
               const TabIcon = tab.icon;
               const isActive = activePropertyTab === tab.id;
               return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActivePropertyTab(tab.id)}
-                  className={`flex-1 py-2 text-[10px] font-semibold tracking-wide text-center transition-all cursor-pointer border-b-2 ${
-                    isActive
-                      ? "text-accent border-accent bg-accent/[0.04]"
-                      : "text-text-muted border-transparent hover:text-text-primary hover:bg-white/[0.02]"
-                  }`}
-                >
+                <button key={tab.id} onClick={() => setActivePropertyTab(tab.id)} className={`flex-1 py-2 text-[10px] font-semibold tracking-wide text-center transition-all cursor-pointer border-b-2 ${isActive ? "text-accent border-accent bg-accent/[0.04]" : "text-text-muted border-transparent hover:text-text-primary hover:bg-white/[0.02]"}`}>
                   <span className="flex items-center justify-center gap-1.5">
                     <TabIcon className="w-3 h-3" />
                     {tab.label}
@@ -215,45 +205,16 @@ export const PropertiesPanel: React.FC = () => {
         {hasAudioTrack && <AudioSection selectedClip={selectedClip} handleUpdate={handleUpdate} />}
 
         {/* Text Styling (text clip + text tab) */}
-        {isTextClip && activePropertyTab === "text" && (
-          <TextStyleSection
-            textClip={textClip}
-            presets={presets}
-            newPresetName={newPresetName}
-            setNewPresetName={setNewPresetName}
-            handleUpdate={handleUpdate}
-            handleUpdateMultiple={handleUpdateMultiple}
-            handleApplyPreset={handleApplyPreset}
-            savePreset={savePreset}
-            deletePreset={deletePreset}
-          />
-        )}
+        {isTextClip && activePropertyTab === "text" && <TextStyleSection textClip={textClip} presets={presets} newPresetName={newPresetName} setNewPresetName={setNewPresetName} handleUpdate={handleUpdate} handleUpdateMultiple={handleUpdateMultiple} handleApplyPreset={handleApplyPreset} savePreset={savePreset} deletePreset={deletePreset} />}
 
         {/* Text Animations (text clip + animation tab) */}
-        {isTextClip && activePropertyTab === "animation" && (
-          <TextAnimationControls
-            clip={textClip}
-            handleUpdate={handleUpdate}
-            handleUpdateMultiple={handleUpdateMultiple}
-          />
-        )}
+        {isTextClip && activePropertyTab === "animation" && <TextAnimationControls clip={textClip} handleUpdate={handleUpdate} handleUpdateMultiple={handleUpdateMultiple} />}
 
         {/* Transform (visual clips, or text clips on transform tab) */}
-        {(isVisualClip || (isTextClip && activePropertyTab === "transform")) && (
-          <TransformSection
-            selectedClip={selectedClip}
-            isVisualClip={isVisualClip}
-            handleUpdate={handleUpdate}
-            handleApplyFit={handleApplyFit}
-            canvasWidth={canvasWidth}
-            canvasHeight={canvasHeight}
-          />
-        )}
+        {(isVisualClip || (isTextClip && activePropertyTab === "transform")) && <TransformSection selectedClip={selectedClip} isVisualClip={isVisualClip} handleUpdate={handleUpdate} handleApplyFit={handleApplyFit} canvasWidth={canvasWidth} canvasHeight={canvasHeight} />}
 
         {/* Effects and Filters */}
-        {isVisualClip && (
-          <EffectsFiltersSection selectedClip={selectedClip} handleUpdate={handleUpdate} />
-        )}
+        {isVisualClip && <EffectsFiltersSection selectedClip={selectedClip} handleUpdate={handleUpdate} />}
       </div>
     </div>
   );

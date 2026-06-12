@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { DensityLevel, ThumbnailTile } from "../types";
+import type { DensityLevel, ThumbnailTile } from "../../types";
 
 const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -12,12 +12,7 @@ export function normalizePathForTauriInvoke(inputPath: string): string {
   const p = inputPath.trim();
 
   // Handle http://asset.localhost/ or https://asset.localhost/
-  if (
-    p.startsWith("http://asset.localhost/") ||
-    p.startsWith("https://asset.localhost/") ||
-    p.startsWith("http://asset.localhost%2F") ||
-    p.startsWith("https://asset.localhost%2F")
-  ) {
+  if (p.startsWith("http://asset.localhost/") || p.startsWith("https://asset.localhost/") || p.startsWith("http://asset.localhost%2F") || p.startsWith("https://asset.localhost%2F")) {
     try {
       const url = new URL(p);
       let pathname = decodeURIComponent(url.pathname.replace(/\+/g, " "));

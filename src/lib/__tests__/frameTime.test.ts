@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { snapToFrameBoundary, snapToFrameFloor, snapToFrameCeil, getFrameIndex, getTimeFromFrame } from "../frameTime";
+import { snapToFrameBoundary, snapToFrameFloor, snapToFrameCeil, getFrameIndex, getTimeFromFrame } from "../utils/frameTime";
 
 describe("frameTime utilities", () => {
   describe("snapToFrameBoundary", () => {

@@ -4,14 +4,14 @@ import { useProjectStore } from "@/store/projectStore";
 import { useUIStore } from "@/store/uiStore";
 import type { Clip } from "@/types";
 import { suspendAutoSave, resumeAutoSave } from "@/store/middleware/autoSaveMiddleware";
-import { calculateDraggedBlockDuration } from "@/lib/clipPositions";
+import { calculateDraggedBlockDuration } from "@/lib/timeline/clipPositions";
 import { usePlaybackClock, useTransportControls } from "@/hooks/usePlaybackClock";
 
 // Three-layer architecture imports
-import { locateTrackRegion, type TrackRegion } from "@/lib/trackRegion";
-import { findSnap, type SnapResult } from "@/lib/snapTargets";
-import { classifyDropTarget, type DropTarget } from "@/lib/dropTarget";
-import { buildPlacementPreview, createPreviewKey, type PlacementPreview } from "@/lib/placementPreview";
+import { locateTrackRegion, type TrackRegion } from "@/lib/timeline/trackRegion";
+import { findSnap, type SnapResult } from "@/lib/timeline/snapTargets";
+import { classifyDropTarget, type DropTarget } from "@/lib/timeline/dropTarget";
+import { buildPlacementPreview, createPreviewKey, type PlacementPreview } from "@/lib/timeline/placementPreview";
 
 const DRAG_RENDER_EPSILON_PX = 0.25;
 const EDGE_HIT_WIDTH_PX = 8; // Screen-space edge detection (stable at any zoom)
@@ -337,11 +337,7 @@ export function useTimelineDrag(containerRef: RefObject<HTMLDivElement | null>) 
       for (const draggedId of ds.draggedClipIds) {
         const draggedClip = clipMapRef.current.get(draggedId) ?? liveClips.find((c) => c.id === draggedId);
         if (!draggedClip) continue;
-        const kind = draggedClip.kind ?? (
-          ("text" in draggedClip || draggedClip.id.startsWith("text-clip-")) ? "text" :
-          draggedClip.mediaId.startsWith("sticker-") ? "sticker" :
-          "video"
-        );
+        const kind = draggedClip.kind ?? ("text" in draggedClip || draggedClip.id.startsWith("text-clip-") ? "text" : draggedClip.mediaId.startsWith("sticker-") ? "sticker" : "video");
         if (kind === "text" && targetTrack.type !== "text") {
           isTrackTypeMismatch = true;
           break;
@@ -777,10 +773,10 @@ export function useTimelineDrag(containerRef: RefObject<HTMLDivElement | null>) 
       return;
     }
 
-    const EDGE_ZONE = 80;       // px from viewport edge where scrolling starts
-    const MAX_SPEED = 600;      // px/s at the very edge
-    const MIN_SPEED = 60;       // px/s at the zone boundary
-    const LABEL_WIDTH = 160;    // track-label column width
+    const EDGE_ZONE = 80; // px from viewport edge where scrolling starts
+    const MAX_SPEED = 600; // px/s at the very edge
+    const MIN_SPEED = 60; // px/s at the zone boundary
+    const LABEL_WIDTH = 160; // track-label column width
 
     const tick = (timestamp: number) => {
       const container = containerRef.current;
@@ -793,9 +789,7 @@ export function useTimelineDrag(containerRef: RefObject<HTMLDivElement | null>) 
       }
 
       // Delta-time for frame-rate-independent speed (capped to avoid jumps)
-      const elapsed = autoScrollTsRef.current
-        ? Math.min(timestamp - autoScrollTsRef.current, 50)
-        : 16;
+      const elapsed = autoScrollTsRef.current ? Math.min(timestamp - autoScrollTsRef.current, 50) : 16;
       autoScrollTsRef.current = timestamp;
 
       const rect = container.getBoundingClientRect();
@@ -815,7 +809,7 @@ export function useTimelineDrag(containerRef: RefObject<HTMLDivElement | null>) 
 
         if (distRight < EDGE_ZONE) {
           // Approaching right edge — quadratic ramp
-          const t = 1 - distRight / EDGE_ZONE;        // 0→1
+          const t = 1 - distRight / EDGE_ZONE; // 0→1
           velocity = MIN_SPEED + t * t * (MAX_SPEED - MIN_SPEED);
         } else if (distLeft < EDGE_ZONE) {
           // Approaching left edge — quadratic ramp

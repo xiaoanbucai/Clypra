@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import fc from "fast-check";
 import { DensityLevel } from "@/types";
-import { DENSITY_CONFIGS, generateTimestampGrid, getDensityForZoom } from "../timelineUtils";
+import { DENSITY_CONFIGS, generateTimestampGrid, getDensityForZoom } from "../timeline/timelineUtils";
 
 type ResolutionTier = "1x" | "2x";
 type FrontendCacheKey = {

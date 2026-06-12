@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getClipVisibleDuration, getClipEndTime, getTimelineContentEnd, getTimelineViewportEnd, normalizeClipTiming, createClipFromAsset, resolveClipDuration } from "../timelineClip";
+import { getClipVisibleDuration, getClipEndTime, getTimelineContentEnd, getTimelineViewportEnd, normalizeClipTiming, createClipFromAsset, resolveClipDuration } from "../timeline/timelineClip";
 import type { Clip, MediaAsset } from "@/types";
 
 describe("timelineClip timing helpers", () => {

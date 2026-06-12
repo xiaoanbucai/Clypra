@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { CacheManager } from "../cacheManager";
-import { globalGPUCache } from "../globalGPUCache";
+import { CacheManager } from "../cache/cacheManager";
+import { globalGPUCache } from "../cache/globalGPUCache";
 
 // Mock Tauri plugin-fs
 vi.mock("@tauri-apps/plugin-fs", () => ({

@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { CacheManager, CacheStats } from "@/lib/cacheManager";
+import { CacheManager, CacheStats } from "@/lib/cache/cacheManager";
 
 interface CacheInfo {
   localStorage: number;

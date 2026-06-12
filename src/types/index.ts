@@ -142,17 +142,65 @@ export interface Clip {
   /** Audio volume (0.0 to 1.0, default 1.0) */
   volume?: number;
   kind?: ClipKind; // Optional for backward compatibility
-  effects?: Array<{
-    id: string;
-    name: string;
-    intensity: number; // 0.0 to 1.0
-  }>;
+  /** Video overlays (actual video files like smoke, fire, light leaks) */
+  overlays?: ClipOverlay[];
+  /** Video effects (behavior-driven like shake, blur, glitch) */
+  effects?: ClipEffect[];
+  /** Legacy filter support (deprecated, use effects instead) */
   filter?: {
     id: string;
     name: string;
     intensity: number; // 0.0 to 1.0
   };
 }
+
+/** Video overlay applied to a clip (actual video file) */
+export interface ClipOverlay {
+  id: string;
+  effectId: string; // Reference to OverlayAsset
+  type: "overlay";
+  url: string; // Object URL of downloaded overlay
+
+  // Transform
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+
+  // Appearance
+  opacity: number;
+  blendMode: BlendMode;
+
+  // Timing (relative to clip)
+  startTime: number;
+  duration: number;
+  loop: boolean;
+}
+
+/** Video effect applied to a clip (behavior-driven) */
+export interface ClipEffect {
+  id: string;
+  effectId: string; // Reference to EffectPreset
+  type: "effect";
+  renderer: string; // "shake", "blur", "glitch", etc.
+  params: Record<string, any>; // Effect-specific parameters
+
+  // Timing (relative to clip)
+  startTime: number;
+  duration: number;
+
+  // Intensity control
+  intensity: number; // 0-1
+  keyframes?: Array<{
+    time: number;
+    intensity: number;
+    easing: string;
+  }>;
+}
+
+/** Blend modes for overlays */
+export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn" | "hard-light" | "soft-light" | "difference" | "exclusion" | "add" | "subtract";
 
 export interface VideoClip extends Clip {
   kind: "video";

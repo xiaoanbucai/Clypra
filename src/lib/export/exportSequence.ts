@@ -14,8 +14,8 @@
  * - Priority scheduling
  */
 
-import { getFrameScheduler } from "../core/scheduler/FrameScheduler";
-import type { Clip, Track, MediaAsset, Project } from "../types";
+import { getFrameScheduler } from "../../core/scheduler/FrameScheduler";
+import type { Clip, Track, MediaAsset, Project } from "../../types";
 
 /**
  * Image sequence export options.

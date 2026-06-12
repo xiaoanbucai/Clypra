@@ -19,7 +19,7 @@ import { useHistoryStore } from "@/store/historyStore";
 import { getTransformController } from "@/core/interactions";
 import { TransformClipCommand } from "@/core/history/commands/TransformCommand";
 import { calculateTransform, getDefaultConstraints, getCursorForHandle } from "@/lib/transform/calculator";
-import { screenToCanvas, canvasToScreen, hitTestClip, type ViewportTransform } from "@/lib/coordinateSystem";
+import { screenToCanvas, canvasToScreen, hitTestClip, type ViewportTransform } from "@/lib/utils/coordinateSystem";
 import type { TransformHandle } from "@/types";
 
 const SELECT_TRACE = import.meta.env.DEV;

@@ -9,10 +9,10 @@
  */
 
 import { invoke, Channel, convertFileSrc } from "@tauri-apps/api/core";
-import { normalizePathForTauriInvoke } from "./tauri";
-import { getFrameScheduler } from "../core/scheduler/FrameScheduler";
-import { VideoElementPool } from "../core/resources/VideoElementPool";
-import type { Clip, Track, MediaAsset, Project, TransitionTimelineItem } from "../types";
+import { normalizePathForTauriInvoke } from "../platform/tauri";
+import { getFrameScheduler } from "../../core/scheduler/FrameScheduler";
+import { VideoElementPool } from "../../core/resources/VideoElementPool";
+import type { Clip, Track, MediaAsset, Project, TransitionTimelineItem } from "../../types";
 
 /**
  * Export progress callback.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateTextClipSize } from "../textClip";
+import { calculateTextClipSize } from "../text/textClip";
 import type { TextEffectDefinition } from "@clypra/engine";
 
 const inkGlowEffect = {

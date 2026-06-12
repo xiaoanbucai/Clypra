@@ -6,7 +6,7 @@ import { useDrag } from "react-dnd";
 import { Film, Plus } from "lucide-react";
 
 import { useUIStore } from "@/store/uiStore";
-import { formatTime } from "@/lib/timeFormatting";
+import { formatTime } from "@/lib/utils/timeFormatting";
 import { MediaCardWaveform } from "../editor/media-tabs/MediaCardWaveform";
 
 // MediaCard Component

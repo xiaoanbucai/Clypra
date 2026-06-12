@@ -12,13 +12,13 @@ import { PreviewTransport } from "./PreviewTransport";
 import { TransformOverlayMemoized as TransformOverlay } from "../transform/TransformOverlay";
 import { SafeOverlay } from "../viewport/SafeOverlay";
 import { useViewportKeyboardShortcuts, useViewportWheelZoom, useViewportPan } from "../viewport/ViewportControls";
-import { calculateDisplayTransform } from "@/lib/coordinateSystem";
-import { GPUTextureCache } from "@/lib/gpuTextureCache";
+import { calculateDisplayTransform } from "@/lib/utils/coordinateSystem";
+import { GPUTextureCache } from "@/lib/cache/gpuTextureCache";
 import { PreviewQualityManager, PreviewQualityTier } from "@/lib/preview/PreviewQualityManager";
 import { cn } from "@/lib/utils";
 import { AspectRatio } from "@/types";
-import { formatTime } from "@/lib/timeFormatting";
-import { refitClipsForCanvasChange } from "@/lib/refitClips";
+import { formatTime } from "@/lib/utils/timeFormatting";
+import { refitClipsForCanvasChange } from "@/lib/timeline/refitClips";
 
 import { TelemetryOverlay, type TelemetryStats } from "./TelemetryOverlay";
 import { AspectSelector } from "./AspectSelector";

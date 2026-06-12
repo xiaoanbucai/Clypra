@@ -7,8 +7,8 @@
 import type { Command } from "../Command";
 import { generateCommandId } from "../Command";
 import type { Clip } from "@/types";
-import { generateId } from "@/lib/id";
-import { snapToFrameBoundary } from "@/lib/frameTime";
+import { generateId } from "@/lib/utils/id";
+import { snapToFrameBoundary } from "@/lib/utils/frameTime";
 
 interface TimelineState {
   clips: Clip[];

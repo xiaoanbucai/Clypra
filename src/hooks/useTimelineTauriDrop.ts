@@ -4,11 +4,11 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 import type { VideoMetadata } from "@/types";
-import { createClipFromAsset } from "@/lib/timelineClip";
-import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequenceAutoAspect";
-import { DEFAULT_PLACEMENT_POLICY, resolveClipStartTime, resolvePreferredTrackId, resolveTargetTrackType } from "@/lib/placementPolicy";
+import { createClipFromAsset } from "@/lib/timeline/timelineClip";
+import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequence/sequenceAutoAspect";
+import { DEFAULT_PLACEMENT_POLICY, resolveClipStartTime, resolvePreferredTrackId, resolveTargetTrackType } from "@/lib/timeline/placementPolicy";
 
 const getMediaType = (path: string): "video" | "audio" | "image" => {
   const lower = path.toLowerCase();

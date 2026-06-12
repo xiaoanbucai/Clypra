@@ -6,7 +6,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { useTransportControls } from "@/hooks/usePlaybackClock";
 import { useCaptionStore } from "@/store/captionStore";
 import { useUIStore } from "@/store/uiStore";
-import { createTextClip } from "@/lib/textClip";
+import { createTextClip } from "@/lib/text/textClip";
 import { parseSubtitles, serializeSubtitles, formatSubtitleTime } from "@/features/subtitles/parser";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabProps } from "./types";

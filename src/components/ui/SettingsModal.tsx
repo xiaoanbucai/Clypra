@@ -7,7 +7,7 @@ import { useProjectStore } from "@/store/projectStore";
 import { useTimelineStore } from "@/store/timelineStore";
 import { CacheSettings } from "@/components/settings/CacheSettings";
 import { WhisperSettings } from "@/components/settings/WhisperSettings";
-import { refitClipsForCanvasChange } from "@/lib/refitClips";
+import { refitClipsForCanvasChange } from "@/lib/timeline/refitClips";
 
 interface SettingsModalProps {
   isOpen: boolean;

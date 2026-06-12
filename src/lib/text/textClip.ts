@@ -4,10 +4,10 @@
  * Helpers for creating text clips with sensible defaults.
  */
 
-import type { TextClip } from "../types";
+import type { TextClip } from "../../types";
 import type { TextEffectDefinition } from "@clypra/engine";
-import { generateId } from "./id";
-import { useEffectsStore } from "../features/text-effects/store/effectsStore";
+import { generateId } from "../utils/id";
+import { useEffectsStore } from "../../features/text-effects/store/effectsStore";
 
 export interface CreateTextClipOptions {
   /** Track ID to place the clip on */

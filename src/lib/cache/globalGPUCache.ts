@@ -10,7 +10,7 @@
  *
  * Usage:
  * ```typescript
- * import { globalGPUCache } from '@/lib/globalGPUCache';
+ * import { globalGPUCache } from '@/lib/cache/globalGPUCache';
  *
  * // Initialize once in root component
  * globalGPUCache.initialize(canvas);

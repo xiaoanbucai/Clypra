@@ -1,13 +1,13 @@
-import { useTimelineStore } from '../store/timelineStore'
-import { useProjectStore } from '../store/projectStore'
-import type { Clip, MediaAsset } from '../types'
-import { createClipFromAsset } from '../lib/timelineClip'
-import { autoAdaptSequenceForFirstVisualClip } from '../lib/sequenceAutoAspect'
-import { DEFAULT_PLACEMENT_POLICY, resolveDefaultFitModeForAsset } from '../lib/placementPolicy'
+import { useTimelineStore } from "../store/timelineStore";
+import { useProjectStore } from "../store/projectStore";
+import type { Clip, MediaAsset } from "../types";
+import { createClipFromAsset } from "../lib/timeline/timelineClip";
+import { autoAdaptSequenceForFirstVisualClip } from "../lib/sequence/sequenceAutoAspect";
+import { DEFAULT_PLACEMENT_POLICY, resolveDefaultFitModeForAsset } from "../lib/timeline/placementPolicy";
 
 export const useTimeline = () => {
-  const { tracks, clips, zoomLevel, scrollLeft, pixelsPerSecond, addClip, removeClip, updateClip, moveClip, setZoom, setScrollLeft } = useTimelineStore()
-  const { mediaAssets, project, updateProject } = useProjectStore()
+  const { tracks, clips, zoomLevel, scrollLeft, pixelsPerSecond, addClip, removeClip, updateClip, moveClip, setZoom, setScrollLeft } = useTimelineStore();
+  const { mediaAssets, project, updateProject } = useProjectStore();
 
   const addClipFromAsset = (asset: MediaAsset, trackId: string, startTime: number) => {
     if (DEFAULT_PLACEMENT_POLICY.autoAdaptSequenceForFirstVisualClip) {
@@ -16,9 +16,9 @@ export const useTimeline = () => {
         existingClips: clips,
         asset,
         updateProject,
-      })
+      });
     }
-    const nextProject = useProjectStore.getState().project
+    const nextProject = useProjectStore.getState().project;
 
     const clip: Clip = createClipFromAsset({
       asset,
@@ -27,17 +27,17 @@ export const useTimeline = () => {
       width: nextProject?.canvasWidth || project?.canvasWidth || 1920,
       height: nextProject?.canvasHeight || project?.canvasHeight || 1080,
       fitMode: resolveDefaultFitModeForAsset(asset),
-    })
-    addClip(clip)
-  }
+    });
+    addClip(clip);
+  };
 
   const getClipsForTrack = (trackId: string) => {
-    return clips.filter((c) => c.trackId === trackId)
-  }
+    return clips.filter((c) => c.trackId === trackId);
+  };
 
   const getMediaAsset = (mediaId: string) => {
-    return mediaAssets.find((a) => a.id === mediaId)
-  }
+    return mediaAssets.find((a) => a.id === mediaId);
+  };
 
   return {
     tracks,
@@ -54,5 +54,5 @@ export const useTimeline = () => {
     addClipFromAsset,
     getClipsForTrack,
     getMediaAsset,
-  }
-}
+  };
+};

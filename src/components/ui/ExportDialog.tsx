@@ -32,7 +32,7 @@ import { SuccessCheck } from "./SuccessCheck";
 import { ExportPresetCard, ExportPreset, PresetConfig } from "./ExportPresetCard";
 
 // Lazy load video export functionality (code splitting)
-const exportVideoModule = () => import("@/lib/videoExport");
+const exportVideoModule = () => import("@/lib/export/videoExport");
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -317,10 +317,10 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
       const { exportVideo } = await exportVideoModule();
 
       const exportResult = await exportVideo({
-	        clips,
-	        tracks,
-	        transitions,
-	        assets: mediaAssets,
+        clips,
+        tracks,
+        transitions,
+        assets: mediaAssets,
         project,
         epoch,
         startTime: 0,

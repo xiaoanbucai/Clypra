@@ -16,10 +16,10 @@
  */
 
 import { useEffect } from "react";
-import { useRenderRuntime } from "../hooks/useRenderRuntime";
-import { useRenderState } from "./renderEngine/hooks";
-import { SpatialTier, InteractionState } from "./renderEngine/types";
-import type { TransportArtifact } from "./renderEngine/transport";
+import { useRenderRuntime } from "../../hooks/useRenderRuntime";
+import { useRenderState } from "../renderEngine/hooks";
+import { SpatialTier, InteractionState } from "../renderEngine/types";
+import type { TransportArtifact } from "../renderEngine/transport";
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 

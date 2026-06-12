@@ -5,17 +5,17 @@ import { useUIStore } from "@/store/uiStore";
 import { usePreviewMode } from "@/hooks/usePreviewMode";
 import { getInsertIndexForNewTrack, useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
-import { createClipFromAsset } from "@/lib/timelineClip";
+import { createClipFromAsset } from "@/lib/timeline/timelineClip";
 import { getActiveSessionOrNull } from "@/core/runtime/ProjectSession";
-import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequenceAutoAspect";
-import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "@/lib/placementPolicy";
+import { autoAdaptSequenceForFirstVisualClip } from "@/lib/sequence/sequenceAutoAspect";
+import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefaultFitModeForAsset } from "@/lib/timeline/placementPolicy";
 import { getPlaybackClock } from "@/hooks/usePlaybackClock";
 import type { SourcePlaybackContext } from "@/core/playback";
 import type { MediaAsset } from "@/types";
 import { GPUPreview } from "./GPUPreview";
 import { AudioWaveform } from "../media-panel/AudioWaveform";
 import { PreviewTransport } from "./PreviewTransport";
-import { createTextClip } from "@/lib/textClip";
+import { createTextClip } from "@/lib/text/textClip";
 import { TextSourcePreview } from "./TextSourcePreview";
 import { useEffectsStore } from "@/features/text-effects/store/effectsStore";
 import LottiePlayer, { type LottiePlayerHandle } from "@/features/text-templates/LottiePlayer";
@@ -120,7 +120,7 @@ export const SourcePreview: React.FC = () => {
     let active = true;
     setLottieError(null);
 
-    import("@/lib/stickerCache")
+    import("@/lib/cache/stickerCache")
       .then(({ stickerCacheManager }) => {
         return stickerCacheManager.readLottieJson(sourceAsset.path!);
       })
@@ -447,9 +447,7 @@ export const SourcePreview: React.FC = () => {
   const hasMarks = sourceInPoint !== null || sourceOutPoint !== null;
   const hasCompleteMarks = sourceInPoint !== null && sourceOutPoint !== null;
 
-  const sourcePath = sourceAsset.path
-    ? (isExternalOrDataUrl(sourceAsset.path) ? sourceAsset.path : convertFileSrc(sourceAsset.path))
-    : "";
+  const sourcePath = sourceAsset.path ? (isExternalOrDataUrl(sourceAsset.path) ? sourceAsset.path : convertFileSrc(sourceAsset.path)) : "";
   const mediaLabel = sourceAsset.type === "video" ? "video" : sourceAsset.type === "audio" ? "audio" : sourceAsset.type === "text" ? "text" : "image";
 
   return (
@@ -587,12 +585,7 @@ export const SourcePreview: React.FC = () => {
               {(() => {
                 const isAddEnabled = sourceAsset.type === "image" || hasCompleteMarks;
                 return (
-                  <button
-                    onClick={handleAddToTimeline}
-                    disabled={!isAddEnabled}
-                    className={`flex items-center gap-1 px-2.5 h-6 rounded text-[10px] font-semibold transition-all ${isAddEnabled ? "bg-accent hover:bg-accent-soft text-white cursor-pointer" : "bg-text-muted/70 hover:bg-text-muted/90 text-white cursor-not-allowed"}`}
-                    title={isAddEnabled ? (sourceAsset.type === "image" ? "Add to Timeline" : `Add ${markedDuration?.toFixed(2)}s to Timeline`) : "Add to Track"}
-                  >
+                  <button onClick={handleAddToTimeline} disabled={!isAddEnabled} className={`flex items-center gap-1 px-2.5 h-6 rounded text-[10px] font-semibold transition-all ${isAddEnabled ? "bg-accent hover:bg-accent-soft text-white cursor-pointer" : "bg-text-muted/70 hover:bg-text-muted/90 text-white cursor-not-allowed"}`} title={isAddEnabled ? (sourceAsset.type === "image" ? "Add to Timeline" : `Add ${markedDuration?.toFixed(2)}s to Timeline`) : "Add to Track"}>
                     <Plus className="w-3 h-3" />
                     Add
                   </button>

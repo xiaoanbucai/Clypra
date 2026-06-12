@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { GPUTextureCache } from "../gpuTextureCache";
+import { GPUTextureCache } from "../cache/gpuTextureCache";
 
 // Minimal mock WebGL2 context
 function createMockGL(): WebGL2RenderingContext {

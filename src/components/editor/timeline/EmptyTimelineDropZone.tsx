@@ -2,7 +2,7 @@ import React from "react";
 // @ts-ignore - react-dnd types issue
 import { useDrop } from "react-dnd";
 import { useTimelineStore } from "@/store/timelineStore";
-import { handleCreateTrackAndDrop } from "@/lib/timelineUtils";
+import { handleCreateTrackAndDrop } from "@/lib/timeline/timelineUtils";
 import type { DragItem } from "@/types";
 
 interface EmptyTimelineDropZoneProps {

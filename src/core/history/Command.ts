@@ -9,7 +9,7 @@
  * - Serialized (for collaboration/macros)
  */
 
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 
 /**
  * Base command interface.

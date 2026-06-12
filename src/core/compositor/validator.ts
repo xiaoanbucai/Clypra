@@ -10,7 +10,7 @@
 
 import type { CompositorClip, TimelineValidation, TimeRange } from "./types";
 import { hasContentAtTime } from "./resolver";
-import { getClipEndTime, getTimelineContentEnd } from "@/lib/timelineClip";
+import { getClipEndTime, getTimelineContentEnd } from "@/lib/timeline/timelineClip";
 
 /**
  * Validate timeline and return diagnostic information.

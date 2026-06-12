@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useCacheManager } from "../useCacheManager";
-import { CacheManager } from "@/lib/cacheManager";
+import { CacheManager } from "@/lib/cache/cacheManager";
 
 vi.mock("@/lib/cacheManager", () => ({
   CacheManager: {
@@ -28,7 +28,7 @@ describe("useCacheManager hook", () => {
 
   it("should fetch cache info on mount", async () => {
     let resultHook: any;
-    
+
     await act(async () => {
       const { result } = renderHook(() => useCacheManager());
       resultHook = result;
@@ -44,7 +44,7 @@ describe("useCacheManager hook", () => {
 
   it("should clear app cache successfully", async () => {
     vi.mocked(CacheManager.clearAppCache).mockResolvedValueOnce({ success: true });
-    
+
     let resultHook: any;
     await act(async () => {
       const { result } = renderHook(() => useCacheManager());

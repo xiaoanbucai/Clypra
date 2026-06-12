@@ -14,7 +14,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { SpatialTier, SPATIAL_TIER_DIMS } from "./types";
 import type { RenderEpochId } from "./types";
-import { generateId } from "@/lib/id";
+import { generateId } from "@/lib/utils/id";
 
 // ─── SAB Detection ────────────────────────────────────────────────────────────
 

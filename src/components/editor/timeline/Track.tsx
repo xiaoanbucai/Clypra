@@ -6,7 +6,7 @@ import { useTimelineStore } from "@/store/timelineStore";
 import { useTimeline } from "@/hooks/useTimeline";
 import { Clip } from "./Clip";
 import { GapIndicator } from "./GapIndicator";
-import { handleDropOnTrack } from "@/lib/timelineUtils";
+import { handleDropOnTrack } from "@/lib/timeline/timelineUtils";
 import type { Clip as ClipType, Track as TrackType, DragItem } from "@/types";
 
 interface TrackProps {

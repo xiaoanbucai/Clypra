@@ -1,3 +1,17 @@
+/**
+ * Legacy Video Effects Store
+ *
+ * @deprecated This store is maintained for backward compatibility.
+ * New code should use @/features/video-effects instead.
+ *
+ * This store was created before the proper distinction between:
+ * - Overlay Assets (actual video files)
+ * - Effect Presets (JSON behavior definitions)
+ * - Transitions (JSON animation definitions)
+ *
+ * It will be phased out in favor of the new modular system.
+ */
+
 import { create } from "zustand";
 import { ClypraApi } from "@/features/text-effects/api/clypraApi";
 
@@ -18,7 +32,7 @@ interface VideoEffectsStore {
   categoryItems: Record<string, EffectItem[]>;
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
-  
+
   // Actions
   loadCategory: (category: string) => Promise<void>;
   clearCache: () => void;

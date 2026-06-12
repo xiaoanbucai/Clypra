@@ -1,6 +1,6 @@
-import { DEFAULT_STILL_DURATION_SECONDS } from "../constants/config";
-import type { Clip, MediaAsset } from "../types";
-import { generateId } from "./id";
+import { DEFAULT_STILL_DURATION_SECONDS } from "../../constants/config";
+import type { Clip, MediaAsset } from "../../types";
+import { generateId } from "../utils/id";
 import { DEFAULT_PLACEMENT_POLICY } from "./placementPolicy";
 
 export const resolveClipDuration = (asset: MediaAsset): number => {
@@ -20,7 +20,7 @@ export function getClipVisibleDuration(clip: Pick<Clip, "trimIn" | "trimOut">): 
 export function normalizeClipTiming(clip: Clip, asset?: MediaAsset): Clip {
   const sourceDuration = asset ? resolveClipDuration(asset) : Infinity;
   const rawTrimIn = typeof clip.trimIn === "number" && !isNaN(clip.trimIn) ? clip.trimIn : 0;
-  const rawTrimOut = typeof clip.trimOut === "number" && !isNaN(clip.trimOut) ? clip.trimOut : (typeof clip.duration === "number" && !isNaN(clip.duration) ? clip.duration : 0);
+  const rawTrimOut = typeof clip.trimOut === "number" && !isNaN(clip.trimOut) ? clip.trimOut : typeof clip.duration === "number" && !isNaN(clip.duration) ? clip.duration : 0;
   const rawStartTime = typeof clip.startTime === "number" && !isNaN(clip.startTime) ? clip.startTime : 0;
 
   // Ensure trim bounds are within source duration
@@ -168,17 +168,7 @@ export const createClipFromAsset = ({ asset, trackId, startTime, width, height, 
 
   // Calculate dimensions that preserve aspect ratio.
   // Default fit mode is centralized in placement policy.
-  const {
-    x,
-    y,
-    width: clipWidth,
-    height: clipHeight,
-  } = calculateClipDimensions(
-    asset,
-    width,
-    height,
-    fitMode,
-  );
+  const { x, y, width: clipWidth, height: clipHeight } = calculateClipDimensions(asset, width, height, fitMode);
 
   // Calculate source aspect ratio for transform constraints
   const sourceAspectRatio = asset.width && asset.height ? asset.width / asset.height : clipWidth / clipHeight;
