@@ -257,6 +257,8 @@ export const Timeline: React.FC = () => {
   const viewportEnd = getTimelineViewportEnd(contentEnd);
   const contentWidth = Math.round(viewportEnd * pixelsPerSecond);
 
+  const hasClips = clips.length > 0;
+
   const seekFromPointer = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement;
@@ -274,19 +276,19 @@ export const Timeline: React.FC = () => {
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
-      const x = event.clientX - rect.left + container.scrollLeft;
+      // Account for the 160px track label column when clips exist
+      const labelColumnWidth = hasClips ? 160 : 0;
+      const x = event.clientX - rect.left - labelColumnWidth + container.scrollLeft;
       const time = Math.max(0, Math.min(x / pixelsPerSecond, duration));
       seek(time);
     },
-    [duration, pixelsPerSecond, seek, previewMode, exitSourceMode, clearSelection],
+    [duration, pixelsPerSecond, seek, previewMode, exitSourceMode, clearSelection, hasClips],
   );
 
   // Simple scroll handler — no cross-container sync needed
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     setScrollLeft(e.currentTarget.scrollLeft);
   };
-
-  const hasClips = clips.length > 0;
 
   return (
     <div className="h-60 md:h-80 flex flex-col select-none relative" style={{ backgroundColor: "var(--color-timeline-bg)" }}>
@@ -304,8 +306,10 @@ export const Timeline: React.FC = () => {
           style={{
             display: "grid",
             gridTemplateColumns: hasClips ? "160px 1fr" : "1fr",
+            gridTemplateRows: hasClips ? "auto 1fr" : undefined,
+            alignContent: "start",
             scrollbarWidth: "none",
-            rowGap: 0, // ← ADD THIS
+            rowGap: 0,
           }}
         >
           {/* ── Row 1: Header + Ruler (both sticky top) ──────────────── */}
@@ -316,7 +320,7 @@ export const Timeline: React.FC = () => {
                 position: "sticky",
                 top: 0,
                 left: 0,
-                zIndex: 30,
+                zIndex: 120,
                 height: "24px",
                 width: "160px",
                 minWidth: "160px",
@@ -351,6 +355,16 @@ export const Timeline: React.FC = () => {
             </div>
           ) : (
             <>
+              {/* Sub-grid wrapper: centers tracks vertically in remaining space */}
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr",
+                  alignContent: "center",
+                  rowGap: 0,
+                }}
+              >
               {dragState?.willCreateNewTrack && dragState?.newTrackPosition === "above" && (
                 <div
                   className="pointer-events-none z-50"
@@ -443,6 +457,7 @@ export const Timeline: React.FC = () => {
                   }}
                 />
               )}
+              </div>
 
               {/* Playhead spans the visible viewport (clips area only) */}
               <div

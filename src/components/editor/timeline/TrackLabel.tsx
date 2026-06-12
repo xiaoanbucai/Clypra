@@ -25,12 +25,12 @@ export const TrackLabel: React.FC<TrackLabelProps> = ({ track }) => {
 
   return (
     <div
-      className={`group relative flex items-center gap-2 px-2 transition-colors bg-surface-raised border-b border-timeline-toolbar-border ${isSelected ? "bg-timeline-track-selected ring-1 ring-inset ring-timeline-track-active" : "hover:bg-timeline-track-hover"} ${isEmpty ? "opacity-70" : ""} ${track.locked ? "bg-timeline-track-active/60" : ""}`}
+      className={`group relative flex items-center gap-2 px-2 transition-colors bg-surface-raised ${isSelected ? "bg-timeline-track-selected ring-1 ring-inset ring-timeline-track-active" : "hover:bg-timeline-track-hover"} ${isEmpty ? "opacity-70" : ""} ${track.locked ? "bg-timeline-track-active/60" : ""}`}
       style={{
         height: `${track.height}px`,
         position: "sticky",
         left: 0,
-        zIndex: 10,
+        zIndex: 120,
         width: "160px",
         minWidth: "160px",
         flexShrink: 0,

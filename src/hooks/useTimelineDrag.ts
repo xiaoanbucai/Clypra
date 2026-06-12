@@ -156,6 +156,10 @@ export function useTimelineDrag(containerRef: RefObject<HTMLDivElement | null>) 
   const dragMoveRafRef = useRef<number | null>(null);
   const dragMovePointerRef = useRef<{ clipId: string; clientX: number; clientY: number } | null>(null);
 
+  // Auto-scroll during clip drag
+  const autoScrollRafRef = useRef<number | null>(null);
+  const autoScrollTsRef = useRef(0);
+
   // ── Lookup maps: O(n) once per clip/track change, O(1) during drag ──
   const clipMapRef = useRef<Map<string, Clip>>(new Map());
   const trackClipsMapRef = useRef<Map<string, Clip[]>>(new Map());
@@ -745,6 +749,98 @@ export function useTimelineDrag(containerRef: RefObject<HTMLDivElement | null>) 
       clearQueuedDragMove();
     };
   }, [clearQueuedDragMove]);
+
+  // ── Smooth auto-scroll during clip drag ──────────────────────────────────
+  useEffect(() => {
+    if (!dragState?.draggingClipId) {
+      // No active drag — tear down loop
+      if (autoScrollRafRef.current !== null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = null;
+      }
+      autoScrollTsRef.current = 0;
+      return;
+    }
+
+    const EDGE_ZONE = 80;       // px from viewport edge where scrolling starts
+    const MAX_SPEED = 600;      // px/s at the very edge
+    const MIN_SPEED = 60;       // px/s at the zone boundary
+    const LABEL_WIDTH = 160;    // track-label column width
+
+    const tick = (timestamp: number) => {
+      const container = containerRef.current;
+      const pointer = dragMovePointerRef.current;
+      const ds = dragStateRef.current;
+
+      if (!container || !pointer || !ds?.draggingClipId) {
+        autoScrollRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Delta-time for frame-rate-independent speed (capped to avoid jumps)
+      const elapsed = autoScrollTsRef.current
+        ? Math.min(timestamp - autoScrollTsRef.current, 50)
+        : 16;
+      autoScrollTsRef.current = timestamp;
+
+      const rect = container.getBoundingClientRect();
+      const clipsLeft = rect.left + LABEL_WIDTH;
+
+      let velocity = 0;
+
+      if (pointer.clientX >= rect.right) {
+        // Pointer past right edge → full speed
+        velocity = MAX_SPEED;
+      } else if (pointer.clientX <= clipsLeft) {
+        // Pointer past left edge → full speed leftward
+        velocity = -MAX_SPEED;
+      } else {
+        const distRight = rect.right - pointer.clientX;
+        const distLeft = pointer.clientX - clipsLeft;
+
+        if (distRight < EDGE_ZONE) {
+          // Approaching right edge — quadratic ramp
+          const t = 1 - distRight / EDGE_ZONE;        // 0→1
+          velocity = MIN_SPEED + t * t * (MAX_SPEED - MIN_SPEED);
+        } else if (distLeft < EDGE_ZONE) {
+          // Approaching left edge — quadratic ramp
+          const t = 1 - distLeft / EDGE_ZONE;
+          velocity = -(MIN_SPEED + t * t * (MAX_SPEED - MIN_SPEED));
+        }
+      }
+
+      if (velocity !== 0) {
+        const scrollDelta = velocity * (elapsed / 1000);
+        const maxScroll = Math.max(0, container.scrollWidth - container.clientWidth);
+        const newScroll = Math.max(0, Math.min(container.scrollLeft + scrollDelta, maxScroll));
+
+        if (Math.abs(newScroll - container.scrollLeft) > 0.5) {
+          container.scrollLeft = newScroll;
+          useTimelineStore.getState().setScrollLeft(newScroll);
+
+          // Cancel pending pointermove RAF to avoid double processing
+          if (dragMoveRafRef.current !== null) {
+            cancelAnimationFrame(dragMoveRafRef.current);
+            dragMoveRafRef.current = null;
+          }
+          // Re-process drag position with updated scroll offset
+          flushQueuedClipDragMove();
+        }
+      }
+
+      autoScrollRafRef.current = requestAnimationFrame(tick);
+    };
+
+    autoScrollTsRef.current = 0;
+    autoScrollRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (autoScrollRafRef.current !== null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = null;
+      }
+    };
+  }, [dragState?.draggingClipId, containerRef, flushQueuedClipDragMove]);
 
   return {
     dragState,
