@@ -1,8 +1,10 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { Filter, Grid3X3, Plus, Search, SlidersHorizontal, Sparkles, Sun, Palette, Droplets, Camera, AlertCircle, type LucideIcon } from "lucide-react";
+import { Filter, Grid3X3, Plus, Search, SlidersHorizontal, Sparkles, Sun, Palette, Droplets, Camera, AlertCircle, CheckCircle, Download, Loader2, type LucideIcon } from "lucide-react";
 import type { TabProps } from "./types";
 import { useVideoEffectsStore } from "@/features/video-effects/store/videoEffectsStore";
 import type { FilterAsset } from "@/features/video-effects/types";
+import { useProjectStore } from "@/store/projectStore";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/Tooltip";
 
 const FILTER_CATEGORIES = [
   { id: "all", label: "All" },
@@ -46,6 +48,11 @@ export const FiltersTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
 
   const categoriesToLoad = useMemo(() => {
     return FILTER_CATEGORIES.filter((c) => c.id !== "all").map((c) => c.id);
+  }, []);
+
+  // Initialize filter cache on mount
+  useEffect(() => {
+    useVideoEffectsStore.getState().initializeCache();
   }, []);
 
   // Fetch filter category items dynamically
@@ -173,6 +180,13 @@ const FilterCard: React.FC<{ filter: FilterAsset; onAddToTimeline: () => void }>
   const Icon = FILTER_ICONS[filter.id] || DEFAULT_ICON;
   const isReady = (filter as any).status !== "soon";
 
+  const { getFilterDownloadState, startFilterDownload, isFilterDownloaded } = useVideoEffectsStore();
+
+  const downloadState = getFilterDownloadState(filter.id);
+  const isDownloadedFlag = isFilterDownloaded(filter.id);
+  const isDownloading = downloadState?.status === "downloading";
+  const hasError = downloadState?.status === "error";
+
   // Use filter-specific preview, or fallback to sample image for testing
   const previewSrc = filter.thumbnail || "/filter-previews/sample.jpg";
   const hasImage = true; // Always try to show image (filter preview or sample)
@@ -201,10 +215,68 @@ const FilterCard: React.FC<{ filter: FilterAsset; onAddToTimeline: () => void }>
     return filterValue ? { filter: filterValue } : {};
   };
 
+  // Handle preview (download filter JSON first)
+  const handlePreview = async () => {
+    if (!isReady) return;
+
+    try {
+      // Download filter if not cached
+      await startFilterDownload(filter);
+
+      // TODO: Open filter preview modal
+      // For now, just show a toast
+      useProjectStore.getState().showToast(`Preview for ${filter.name} - Full preview coming soon!`);
+    } catch (error) {
+      console.error("[FilterCard] Preview failed:", error);
+      useProjectStore.getState().showToast("Failed to load filter preview", "error");
+    }
+  };
+
+  // Handle add to timeline (download first, then add)
+  const handleAddToTimeline = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering preview
+    if (!isReady || isDownloading) return;
+
+    try {
+      await startFilterDownload(filter);
+      onAddToTimeline();
+    } catch (error) {
+      console.error("[FilterCard] Add to timeline failed:", error);
+      useProjectStore.getState().showToast("Failed to add filter", "error");
+    }
+  };
+
   return (
-    <button onClick={isReady ? onAddToTimeline : undefined} disabled={!isReady} className={`group text-left rounded-xl border bg-surface-raised/40 transition-all overflow-hidden flex flex-col h-[200px] shadow-[0_4px_16px_rgba(0,0,0,0.3)] ${isReady ? "border-border/40 hover:bg-surface-raised/80 hover:border-accent/40 cursor-pointer" : "border-border/30 opacity-70 cursor-not-allowed"}`}>
+    <div onClick={handlePreview} className={`group text-left rounded-xl border bg-surface-raised/40 transition-all overflow-hidden flex flex-col h-[200px] shadow-[0_4px_16px_rgba(0,0,0,0.3)] ${isReady ? "hover:bg-surface-raised/80 hover:border-accent/40 cursor-pointer" : "opacity-70 cursor-not-allowed"} ${isDownloading ? "border-accent/60" : "border-border/40"}`}>
+      {/* Downloading Overlay */}
+      {isDownloading && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-20 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-6 h-6 text-accent animate-spin" />
+            <span className="text-[10px] font-semibold text-accent">{downloadState?.progress || 0}%</span>
+          </div>
+        </div>
+      )}
+
+      {/* Error Overlay */}
+      {hasError && (
+        <div className="absolute inset-0 bg-black/60 z-10 flex flex-col items-center justify-center gap-1 text-red-400">
+          <AlertCircle className="w-5 h-5" />
+          <span className="text-[10px] font-semibold">Failed</span>
+        </div>
+      )}
+
       {/* Preview Area */}
       <div className="h-28 w-full relative overflow-hidden bg-surface/60 shrink-0">
+        {/* Cached Indicator */}
+        {isDownloadedFlag && !isDownloading && (
+          <div className="absolute top-2 right-2 z-10">
+            <div className="bg-green-500/90 rounded-full p-0.5 shadow-md">
+              <CheckCircle className="w-3 h-3 text-white" />
+            </div>
+          </div>
+        )}
+
         {hasImage ? (
           // Show actual preview image with CSS filter applied for preview
           <img
@@ -235,7 +307,20 @@ const FilterCard: React.FC<{ filter: FilterAsset; onAddToTimeline: () => void }>
         <div>
           <div className="flex items-start justify-between gap-2">
             <p className="text-[13px] font-semibold text-text-primary leading-tight truncate">{filter.name}</p>
-            <Plus className={`w-3.5 h-3.5 text-text-muted shrink-0 transition-colors ${isReady ? "group-hover:text-accent" : ""}`} />
+
+            {/* Add to Timeline Button */}
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button onClick={handleAddToTimeline} disabled={isDownloading || !isReady} className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${isDownloading ? "bg-accent/20 border border-accent cursor-wait" : isDownloadedFlag ? "bg-accent/20 hover:bg-accent border border-accent text-accent hover:text-white cursor-pointer" : "bg-surface/40 hover:bg-accent/80 border border-border/50 text-text-muted hover:text-white cursor-pointer"}`}>
+                    {isDownloading ? <Download className="w-3.5 h-3.5 animate-pulse" /> : <Plus className="w-3.5 h-3.5" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p>{isDownloadedFlag ? "Add to Timeline" : "Download & Add"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
           <p className="mt-1 text-[11px] leading-snug text-text-muted line-clamp-2 truncate">{filter.description}</p>
         </div>
@@ -245,6 +330,6 @@ const FilterCard: React.FC<{ filter: FilterAsset; onAddToTimeline: () => void }>
           {filter.intensity && <span className="text-[10px] text-text-muted shrink-0">{filter.intensity.default}%</span>}
         </div>
       </div>
-    </button>
+    </div>
   );
 };

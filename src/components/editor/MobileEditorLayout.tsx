@@ -22,6 +22,7 @@ import type { MediaAsset } from "@/types";
 import { useAudioLibraryStore } from "@/features/audio-library/store/audioLibraryStore";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useStickersStore } from "@/features/stickers/store/stickersStore";
+import { useVideoEffectsStore } from "@/features/video-effects/store/videoEffectsStore";
 
 export const MobileEditorLayout: React.FC = () => {
   const { tracks, clips, addClip, addTrack, insertTrackAt, getTimelineEndTime, createTransitionBetweenClips } = useTimelineStore();
@@ -288,6 +289,15 @@ export const MobileEditorLayout: React.FC = () => {
         useProjectStore.getState().showToast(`${item?.name || "Transition"} added`);
       }
     } else if (type === "filters") {
+      // Filter must be downloaded first
+      const cachedFilter = useVideoEffectsStore.getState().getCachedFilter(item.id);
+
+      if (!cachedFilter) {
+        console.error("[MobileEditorLayout] Filter not downloaded yet:", item.id);
+        useProjectStore.getState().showToast("Filter not downloaded yet", "warning");
+        return;
+      }
+
       // Filter clips follow the same placement policy semantics:
       // playhead-first, no overwrite, create track when occupied.
       const placement = resolveAddToTimelinePlacement({
@@ -324,13 +334,13 @@ export const MobileEditorLayout: React.FC = () => {
         opacity: 1.0,
         rotation: 0,
         kind: "filter" as const,
-        name: item.name || "Filter",
+        name: cachedFilter.filter.name || "Filter",
         intensity: defaultIntensity,
-        swatch: item.swatch || "",
+        swatch: cachedFilter.filter.swatch || "",
       };
 
       addClip(filterClip as any);
-      useProjectStore.getState().showToast(`Added ${item.name} filter to timeline`);
+      useProjectStore.getState().showToast(`Added ${cachedFilter.filter.name} filter to timeline`);
     }
   };
 

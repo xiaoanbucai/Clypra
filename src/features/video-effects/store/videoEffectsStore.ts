@@ -9,9 +9,10 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { VideoEffectManifest, VideoEffectItem, OverlayAsset, EffectPreset, TransitionPreset, VideoEffectCategory, EffectCategory } from "../types";
+import { VideoEffectManifest, VideoEffectItem, OverlayAsset, EffectPreset, TransitionPreset, VideoEffectCategory, EffectCategory, FilterAsset } from "../types";
 import { VideoEffectsApi } from "../api/clypraApi";
 import { videoEffectsCacheManager, type CachedOverlay, type VideoEffectsDownloadProgress } from "@/lib/cache/videoEffectsCache";
+import { filterCacheManager, type CachedFilter, type FilterDownloadProgress } from "@/lib/cache/filterCache";
 
 export type VideoEffectsDownloadStatus = "idle" | "downloading" | "completed" | "error";
 
@@ -20,6 +21,7 @@ export interface VideoEffectsDownloadState {
   status: VideoEffectsDownloadStatus;
   progress: number; // 0-100
   cachedOverlay?: CachedOverlay;
+  cachedFilter?: CachedFilter;
   error?: string;
 }
 
@@ -59,9 +61,16 @@ interface VideoEffectsState {
   clearDownloadState: (itemId: string) => void;
   clearCache: (itemId: string) => Promise<void>;
 
+  // Filter Cache & Download Actions
+  startFilterDownload: (filter: FilterAsset) => Promise<CachedFilter>;
+  getFilterDownloadState: (filterId: string) => VideoEffectsDownloadState | null;
+  isFilterDownloaded: (filterId: string) => boolean;
+  getCachedFilter: (filterId: string) => CachedFilter | null;
+  clearFilterCache: (filterId: string) => Promise<void>;
+
   // Internal setters for downloads
   _updateDownloadProgress: (itemId: string, progress: number) => void;
-  _setDownloadCompleted: (itemId: string, cachedOverlay: CachedOverlay) => void;
+  _setDownloadCompleted: (itemId: string, cachedOverlay?: CachedOverlay, cachedFilter?: CachedFilter) => void;
   _setDownloadError: (itemId: string, error: string) => void;
 
   // Favorites
@@ -113,7 +122,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
           for (const file of cached) {
             const absolutePath = await join(appCache, file.localPath);
             const localUrl = convertFileSrc(absolutePath);
-            
+
             downloads[file.id] = {
               itemId: file.id,
               status: "completed",
@@ -357,7 +366,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
         });
       },
 
-      _setDownloadCompleted: (itemId: string, cachedOverlay: CachedOverlay) => {
+      _setDownloadCompleted: (itemId: string, cachedOverlay?: CachedOverlay, cachedFilter?: CachedFilter) => {
         const { downloads } = get();
         if (!downloads[itemId]) return;
         set({
@@ -368,6 +377,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
               status: "completed",
               progress: 100,
               cachedOverlay,
+              cachedFilter,
             },
           },
         });
@@ -441,6 +451,94 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
         }
       },
 
+      // ============================================================================
+      // FILTER DOWNLOAD & CACHE METHODS
+      // ============================================================================
+
+      // Start downloading a filter to disk
+      startFilterDownload: async (filter: FilterAsset): Promise<CachedFilter> => {
+        const { downloads } = get();
+
+        // Check if already completed
+        if (filterCacheManager.isCached(filter.id)) {
+          const cached = filterCacheManager.getCached(filter.id)!;
+          return cached;
+        }
+
+        if (downloads[filter.id]?.status === "downloading") {
+          // If already downloading, wait for it
+          const checkCompletion = (): Promise<CachedFilter> => {
+            return new Promise((resolve, reject) => {
+              const unsubscribe = useVideoEffectsStore.subscribe((state) => {
+                const dl = state.downloads[filter.id];
+                if (dl?.status === "completed" && dl.cachedFilter) {
+                  unsubscribe();
+                  resolve(dl.cachedFilter);
+                } else if (dl?.status === "error") {
+                  unsubscribe();
+                  reject(new Error(dl.error || "Download failed"));
+                }
+              });
+            });
+          };
+          return checkCompletion();
+        }
+
+        set({
+          downloads: {
+            ...downloads,
+            [filter.id]: {
+              itemId: filter.id,
+              status: "downloading",
+              progress: 0,
+            },
+          },
+        });
+
+        try {
+          const cachedFilter = await filterCacheManager.downloadFilter(filter, (progress) => {
+            get()._updateDownloadProgress(filter.id, progress.percentage);
+          });
+
+          get()._setDownloadCompleted(filter.id, undefined, cachedFilter);
+          return cachedFilter;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Download failed";
+          get()._setDownloadError(filter.id, errorMessage);
+          throw error;
+        }
+      },
+
+      getFilterDownloadState: (filterId: string) => {
+        const state = get().downloads[filterId];
+        if (state) return state;
+
+        if (filterCacheManager.isCached(filterId)) {
+          const cached = filterCacheManager.getCached(filterId)!;
+          return {
+            itemId: filterId,
+            status: "completed",
+            progress: 100,
+            cachedFilter: cached,
+          };
+        }
+
+        return null;
+      },
+
+      isFilterDownloaded: (filterId: string) => {
+        return filterCacheManager.isCached(filterId);
+      },
+
+      getCachedFilter: (filterId: string) => {
+        return filterCacheManager.getCached(filterId);
+      },
+
+      clearFilterCache: async (filterId: string) => {
+        await filterCacheManager.clearCache(filterId);
+        get().clearDownloadState(filterId);
+      },
+
       // Favorites
       addFavorite: (id: string) => {
         set((state) => {
@@ -474,6 +572,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
       // Cache management
       clearAllLocalCaches: async () => {
         await videoEffectsCacheManager.clearAllCache();
+        await filterCacheManager.clearAllCache();
         VideoEffectsApi.clearLocalCache();
 
         set({
@@ -497,11 +596,14 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
       getCacheStats: () => {
         const apiStats = VideoEffectsApi.getCacheStats();
         const diskStats = videoEffectsCacheManager.getCacheStats();
+        const filterStats = filterCacheManager.getCacheStats();
 
         return {
           ...apiStats,
           diskCount: diskStats.count,
           diskSize: diskStats.totalSize,
+          filterCount: filterStats.count,
+          filterSize: filterStats.totalSize,
         };
       },
     }),
@@ -603,4 +705,3 @@ import React from "react";
 
 // Initialize cache on startup
 useVideoEffectsStore.getState().initializeCache();
-
