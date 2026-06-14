@@ -237,14 +237,14 @@ export const CaptionsTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
             audioPath: tempAudioPath,
             modelSize: model,
             language: language === "auto" ? null : language,
-            languageHints: captionSettings.languageHints.length > 0 ? captionSettings.languageHints : null,
+            languageHints: captionSettings.languageHints?.length > 0 ? captionSettings.languageHints : null,
           });
 
           const resultJsonStr = await invoke<string>("transcribe_audio_local", {
             audioPath: tempAudioPath,
             modelSize: model,
             language: language === "auto" ? null : language,
-            languageHints: captionSettings.languageHints.length > 0 ? captionSettings.languageHints : null,
+            languageHints: captionSettings.languageHints?.length > 0 ? captionSettings.languageHints : null,
           });
 
           console.log(`[CaptionsTab] Transcription completed, result:`, resultJsonStr);
