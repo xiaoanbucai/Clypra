@@ -184,12 +184,17 @@ export const CaptionsTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
         if (!asset) continue;
 
         try {
+          console.log(`[CaptionsTab] Processing clip: ${mediaClip.id}, asset: ${asset.path}`);
+
           // Extract audio from the clip
           const tempAudioPath = await invoke<string>("extract_audio_track", {
             path: asset.path,
           });
 
+          console.log(`[CaptionsTab] Audio extracted to: ${tempAudioPath}`);
+
           // Transcribe using Whisper with selected/default model and language
+          console.log(`[CaptionsTab] Transcribing with model: ${model}, language: ${language}`);
           const resultJsonStr = await invoke<string>("transcribe_audio_local", {
             audioPath: tempAudioPath,
             modelSize: model,
@@ -197,15 +202,23 @@ export const CaptionsTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
             languageHints: captionSettings.languageHints.length > 0 ? captionSettings.languageHints : null,
           });
 
+          console.log(`[CaptionsTab] Transcription result:`, resultJsonStr);
           const result = JSON.parse(resultJsonStr);
 
           if (result.error) {
             console.error(`Failed to transcribe ${mediaClip.id}:`, result.error);
+            setErrorMsg(`Transcription error: ${result.error}`);
             continue;
           }
 
           // Add segments to timeline
           const segments = result.segments || [];
+          console.log(`[CaptionsTab] Found ${segments.length} segments`);
+
+          if (segments.length === 0) {
+            console.warn(`[CaptionsTab] No segments found in transcription result`);
+          }
+
           withBatch(() => {
             segments.forEach((seg: any) => {
               const relativeStart = seg.start - mediaClip.trimIn;
@@ -240,11 +253,13 @@ export const CaptionsTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
 
                 addClip(textClip);
                 totalCaptions++;
+                console.log(`[CaptionsTab] Added caption: "${seg.text}"`);
               }
             });
           });
         } catch (clipError: any) {
           console.error(`Error processing clip ${mediaClip.id}:`, clipError);
+          setErrorMsg(`Error: ${clipError.message || clipError}`);
         }
       }
 
