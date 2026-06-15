@@ -14,6 +14,7 @@ import { VideoEffectsApi } from "../api/clypraApi";
 import { videoEffectsCacheManager, type CachedOverlay, type VideoEffectsDownloadProgress } from "@/lib/cache/videoEffectsCache";
 import { filterCacheManager, type CachedFilter, type FilterDownloadProgress } from "@/lib/cache/filterCache";
 import { effectCacheManager, type CachedEffect, type EffectDownloadProgress } from "@/lib/cache/effectCache";
+import { overlayCacheManager, type CachedOverlay as CachedOverlayVideo, type OverlayDownloadProgress } from "@/lib/cache/overlayCache";
 
 export type VideoEffectsDownloadStatus = "idle" | "downloading" | "completed" | "error";
 
@@ -24,6 +25,7 @@ export interface VideoEffectsDownloadState {
   cachedOverlay?: CachedOverlay;
   cachedFilter?: CachedFilter;
   cachedEffect?: CachedEffect;
+  cachedOverlayVideo?: CachedOverlayVideo;
   error?: string;
 }
 
@@ -77,9 +79,16 @@ interface VideoEffectsState {
   getCachedEffect: (effectId: string) => CachedEffect | null;
   clearEffectCache: (effectId: string) => Promise<void>;
 
+  // Animated Overlay Cache & Download Actions
+  startOverlayVideoDownload: (overlay: OverlayAsset) => Promise<CachedOverlayVideo>;
+  getOverlayVideoDownloadState: (overlayId: string) => VideoEffectsDownloadState | null;
+  isOverlayVideoDownloaded: (overlayId: string) => boolean;
+  getCachedOverlayVideo: (overlayId: string) => CachedOverlayVideo | null;
+  clearOverlayVideoCache: (overlayId: string) => Promise<void>;
+
   // Internal setters for downloads
   _updateDownloadProgress: (itemId: string, progress: number) => void;
-  _setDownloadCompleted: (itemId: string, cachedOverlay?: CachedOverlay, cachedFilter?: CachedFilter, cachedEffect?: CachedEffect) => void;
+  _setDownloadCompleted: (itemId: string, cachedOverlay?: CachedOverlay, cachedFilter?: CachedFilter, cachedEffect?: CachedEffect, cachedOverlayVideo?: CachedOverlayVideo) => void;
   _setDownloadError: (itemId: string, error: string) => void;
 
   // Favorites
@@ -114,6 +123,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
           await videoEffectsCacheManager.initialize();
           await filterCacheManager.initialize();
           await effectCacheManager.initialize();
+          await overlayCacheManager.initialize();
 
           // Try loading cached manifest from disk
           const diskManifest = await videoEffectsCacheManager.loadManifestJson();
@@ -124,6 +134,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
           const cached = videoEffectsCacheManager.getAllCached();
           const cachedFilters = filterCacheManager.getAllCached();
           const cachedEffects = effectCacheManager.getAllCached();
+          const cachedOverlayVideos = overlayCacheManager.getAllCached();
 
           const downloads: Record<string, VideoEffectsDownloadState> = { ...get().downloads };
           const overlayURLs = new Map(get().overlayURLs);
@@ -165,6 +176,21 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
               progress: 100,
               cachedEffect: effect,
             };
+          }
+
+          // Load animated overlay video cache
+          for (const overlayVideo of cachedOverlayVideos) {
+            const absolutePath = await join(appCache, overlayVideo.localPath);
+            const localUrl = convertFileSrc(absolutePath);
+
+            downloads[overlayVideo.id] = {
+              itemId: overlayVideo.id,
+              status: "completed",
+              progress: 100,
+              cachedOverlayVideo: overlayVideo,
+            };
+
+            overlayURLs.set(overlayVideo.id, localUrl);
           }
 
           set({ downloads, overlayURLs });
@@ -400,7 +426,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
         });
       },
 
-      _setDownloadCompleted: (itemId: string, cachedOverlay?: CachedOverlay, cachedFilter?: CachedFilter, cachedEffect?: CachedEffect) => {
+      _setDownloadCompleted: (itemId: string, cachedOverlay?: CachedOverlay, cachedFilter?: CachedFilter, cachedEffect?: CachedEffect, cachedOverlayVideo?: CachedOverlayVideo) => {
         const { downloads } = get();
         if (!downloads[itemId]) return;
         set({
@@ -413,6 +439,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
               cachedOverlay,
               cachedFilter,
               cachedEffect,
+              cachedOverlayVideo,
             },
           },
         });
@@ -662,6 +689,112 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
         get().clearDownloadState(effectId);
       },
 
+      // ============================================================================
+      // ANIMATED OVERLAY VIDEO DOWNLOAD & CACHE METHODS
+      // ============================================================================
+
+      // Start downloading an animated overlay video to disk
+      startOverlayVideoDownload: async (overlay: OverlayAsset): Promise<CachedOverlayVideo> => {
+        const { downloads } = get();
+
+        // Check if already completed
+        if (overlayCacheManager.isCached(overlay.id)) {
+          const cached = overlayCacheManager.getCached(overlay.id)!;
+          return cached;
+        }
+
+        if (downloads[overlay.id]?.status === "downloading") {
+          // If already downloading, wait for it
+          const checkCompletion = (): Promise<CachedOverlayVideo> => {
+            return new Promise((resolve, reject) => {
+              const unsubscribe = useVideoEffectsStore.subscribe((state) => {
+                const dl = state.downloads[overlay.id];
+                if (dl?.status === "completed" && dl.cachedOverlayVideo) {
+                  unsubscribe();
+                  resolve(dl.cachedOverlayVideo);
+                } else if (dl?.status === "error") {
+                  unsubscribe();
+                  reject(new Error(dl.error || "Download failed"));
+                }
+              });
+            });
+          };
+          return checkCompletion();
+        }
+
+        set({
+          downloads: {
+            ...downloads,
+            [overlay.id]: {
+              itemId: overlay.id,
+              status: "downloading",
+              progress: 0,
+            },
+          },
+        });
+
+        try {
+          const cachedOverlayVideo = await overlayCacheManager.downloadOverlay(overlay, (progress) => {
+            get()._updateDownloadProgress(overlay.id, progress.percentage);
+          });
+
+          // Resolve absolute path and set URL
+          const { appCacheDir, join } = await import("@tauri-apps/api/path");
+          const { convertFileSrc } = await import("@tauri-apps/api/core");
+          const appCache = await appCacheDir();
+          const absolutePath = await join(appCache, cachedOverlayVideo.localPath);
+          const localUrl = convertFileSrc(absolutePath);
+
+          set((state) => {
+            const newURLs = new Map(state.overlayURLs);
+            newURLs.set(overlay.id, localUrl);
+            return { overlayURLs: newURLs };
+          });
+
+          get()._setDownloadCompleted(overlay.id, undefined, undefined, undefined, cachedOverlayVideo);
+          return cachedOverlayVideo;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Download failed";
+          get()._setDownloadError(overlay.id, errorMessage);
+          throw error;
+        }
+      },
+
+      getOverlayVideoDownloadState: (overlayId: string) => {
+        const state = get().downloads[overlayId];
+        if (state) return state;
+
+        if (overlayCacheManager.isCached(overlayId)) {
+          const cached = overlayCacheManager.getCached(overlayId)!;
+          return {
+            itemId: overlayId,
+            status: "completed",
+            progress: 100,
+            cachedOverlayVideo: cached,
+          };
+        }
+
+        return null;
+      },
+
+      isOverlayVideoDownloaded: (overlayId: string) => {
+        return overlayCacheManager.isCached(overlayId);
+      },
+
+      getCachedOverlayVideo: (overlayId: string) => {
+        return overlayCacheManager.getCached(overlayId);
+      },
+
+      clearOverlayVideoCache: async (overlayId: string) => {
+        await overlayCacheManager.clearCache(overlayId);
+        set((state) => {
+          const newURLs = new Map(state.overlayURLs);
+          newURLs.delete(overlayId);
+          return { overlayURLs: newURLs };
+        });
+        get().clearDownloadState(overlayId);
+      },
+
       // Favorites
       addFavorite: (id: string) => {
         set((state) => {
@@ -697,6 +830,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
         await videoEffectsCacheManager.clearAllCache();
         await filterCacheManager.clearAllCache();
         await effectCacheManager.clearAllCache();
+        await overlayCacheManager.clearAllCache();
         VideoEffectsApi.clearLocalCache();
 
         set({
@@ -722,6 +856,7 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
         const diskStats = videoEffectsCacheManager.getCacheStats();
         const filterStats = filterCacheManager.getCacheStats();
         const effectStats = effectCacheManager.getCacheStats();
+        const overlayStats = overlayCacheManager.getCacheStats();
 
         return {
           ...apiStats,
@@ -731,6 +866,8 @@ export const useVideoEffectsStore = create<VideoEffectsState>()(
           filterSize: filterStats.totalSize,
           effectCount: effectStats.count,
           effectSize: effectStats.totalSize,
+          overlayCount: overlayStats.count,
+          overlaySize: overlayStats.totalSize,
         };
       },
     }),

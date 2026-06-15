@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { Music, Smile, Wand2, MessageSquare, Filter } from "lucide-react";
-import { MediaTab, AudioTab, TextTab, StickersTab, FiltersTab, CaptionsTab, type TabType, MediaTabProps } from "../media-tabs";
-import { EffectsPanel } from "@/features/video-effects/components/EffectsPanel";
+import { MediaTab, AudioTab, TextTab, StickersTab, FiltersTab, EffectsTab, CaptionsTab, type TabType, MediaTabProps } from "../media-tabs";
 import { TextIcon, YouTubeIcon } from "../../ui/icons";
 
 export const EnhancedMediaPanel: React.FC<MediaTabProps> = ({ onAddToTimeline, initialTab = "media" }) => {
@@ -51,7 +50,7 @@ export const EnhancedMediaPanel: React.FC<MediaTabProps> = ({ onAddToTimeline, i
         {activeTab === "audio" && <AudioTab onAddToTimeline={onAddToTimeline} />}
         {activeTab === "text" && <TextTab onAddToTimeline={onAddToTimeline} />}
         {activeTab === "stickers" && <StickersTab onAddToTimeline={onAddToTimeline} />}
-        {activeTab === "effects" && <EffectsPanel />}
+        {activeTab === "effects" && <EffectsTab onAddToTimeline={onAddToTimeline} />}
         {activeTab === "filters" && <FiltersTab onAddToTimeline={onAddToTimeline} />}
         {activeTab === "captions" && <CaptionsTab onAddToTimeline={onAddToTimeline} />}
       </div>

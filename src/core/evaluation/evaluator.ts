@@ -85,6 +85,13 @@ export function evaluateTimelineScene(time: number, clips: Clip[], tracks: Track
     .sort((a, b) => a.trackIndex - b.trackIndex);
   const activeFilterClip = activeFilterClips[0] ?? null;
 
+  const activeEffectClips = compositorClips
+    .filter((c) => {
+      const track = trackMap.get(c.trackId);
+      return (c.kind === "video-effect" || c.kind === "body-effect") && (track?.visible ?? true) && c.startTime <= evalTime && evalTime < c.startTime + c.duration;
+    })
+    .sort((a, b) => a.trackIndex - b.trackIndex);
+
   const sortedClips = activeClips.sort((a, b) => {
     const roleOrder = getRoleOrder(a.role) - getRoleOrder(b.role);
     if (roleOrder !== 0) return roleOrder;
@@ -219,11 +226,24 @@ export function evaluateTimelineScene(time: number, clips: Clip[], tracks: Track
       transitionProgress: transitionState.progress,
       blendMode: (clip as any).blendMode || "normal",
       stickerSettings: (clip as any).stickerSettings,
-      effects: clip.effects?.map((fx) => ({
-        effectId: fx.id,
-        type: "video_effect",
-        parameters: { name: fx.name, intensity: fx.intensity },
-      })),
+      effects: [
+        ...(clip.effects || []).map((fx) => ({
+          effectId: fx.effectId || fx.id,
+          type: "video_effect" as const,
+          renderer: fx.renderer || fx.effectId || fx.id,
+          parameters: { ...(fx.params || {}), name: fx.name },
+          intensity: normalizeEffectIntensity(fx.intensity),
+          localTime: Math.max(0, offset - (fx.startTime || 0)),
+        })),
+        ...activeEffectClips.map((fxClip) => ({
+          effectId: fxClip.mediaId || fxClip.id,
+          type: fxClip.kind === "body-effect" ? ("body_effect" as const) : ("video_effect" as const),
+          renderer: (fxClip as any).renderer || fxClip.mediaId || fxClip.id,
+          parameters: { ...((fxClip as any).params || {}), name: fxClip.name },
+          intensity: normalizeEffectIntensity((fxClip as any).intensity),
+          localTime: Math.max(0, evalTime - fxClip.startTime),
+        })),
+      ],
       filter: clip.filter,
     };
 
@@ -325,6 +345,12 @@ function getRoleOrder(role: string): number {
     audio: -1,
   };
   return order[role] ?? 1;
+}
+
+function normalizeEffectIntensity(value: unknown): number {
+  const numeric = typeof value === "number" ? value : 1;
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.max(0, Math.min(1, numeric));
 }
 
 interface ActiveTransitionWindow {

@@ -503,12 +503,7 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
     return `00:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}:00`;
   };
 
-  const inferredKind = clip.kind ?? (
-    ("text" in clip || clip.id.startsWith("text-clip-")) ? "text" :
-    clip.mediaId.startsWith("sticker-") ? "sticker" :
-    clip.id.startsWith("filter-clip-") ? "filter" :
-    mediaAsset?.type
-  );
+  const inferredKind = clip.kind ?? ("text" in clip || clip.id.startsWith("text-clip-") ? "text" : clip.mediaId.startsWith("sticker-") ? "sticker" : clip.id.startsWith("filter-clip-") ? "filter" : mediaAsset?.type);
 
   const isSticker = inferredKind === "sticker";
   const isClipText = inferredKind === "text";
@@ -516,6 +511,9 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
   const isClipVideo = inferredKind === "video";
   const isClipImage = inferredKind === "image";
   const isClipFilter = inferredKind === "filter";
+  const isClipVideoEffect = inferredKind === "video-effect";
+  const isClipBodyEffect = inferredKind === "body-effect";
+  const isClipAnimatedOverlay = inferredKind === "animated-overlay";
 
   // Check if text clip is a caption or title
   const textClip = isClipText ? (clip as any) : null;
@@ -524,7 +522,7 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
   const isTitle = textRole === "title";
 
   const getClipStyle = () => {
-    if (isClipFilter) return "bg-violet-600/30 border border-violet-500/50 hover:bg-violet-600/40 text-violet-100";
+    if (isClipFilter || isClipVideoEffect || isClipBodyEffect || isClipAnimatedOverlay) return "bg-violet-600/30 border border-violet-500/50 hover:bg-violet-600/40 text-violet-100";
     if (isSticker) return "bg-[#d97706] text-white"; // Orange-amber for stickers
     if (isClipText) {
       // Differentiate captions (purple) from titles (orange)
@@ -541,7 +539,7 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
   };
 
   const getClipBackgroundStyle = () => {
-    if (isClipFilter) return { backgroundColor: "rgba(124, 58, 237, 0.3)" };
+    if (isClipFilter || isClipVideoEffect || isClipBodyEffect || isClipAnimatedOverlay) return { backgroundColor: "rgba(124, 58, 237, 0.3)" }; // Same violet for all effects
     if (isSticker) return { backgroundColor: "#d97706" }; // Amber/yellow tone matching user screenshot
     if (isClipText) return {}; // Text clips use className colors
     if (isClipAudio) return { backgroundColor: "var(--color-timeline-clip-audio)" };
@@ -636,25 +634,33 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
           <div className="w-5 h-5 rounded bg-violet-600/60 border border-white/10 flex items-center justify-center backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-white" />
           </div>
-          <span className="text-[10px] font-bold text-white/90 truncate">
-            {clip.name || "Filter"}
-          </span>
+          <span className="text-[10px] font-bold text-white/90 truncate">{clip.name || "Filter"}</span>
+        </div>
+      ) : isClipVideoEffect ? (
+        <div className="relative flex h-full w-full items-center px-2 select-none pointer-events-none gap-2">
+          <div className="w-5 h-5 rounded bg-violet-600/60 border border-white/10 flex items-center justify-center backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span className="text-[10px] font-bold text-white/90 truncate">{clip.name || "Video Effect"}</span>
+        </div>
+      ) : isClipBodyEffect ? (
+        <div className="relative flex h-full w-full items-center px-2 select-none pointer-events-none gap-2">
+          <div className="w-5 h-5 rounded bg-violet-600/60 border border-white/10 flex items-center justify-center backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span className="text-[10px] font-bold text-white/90 truncate">{clip.name || "Body Effect"}</span>
+        </div>
+      ) : isClipAnimatedOverlay ? (
+        <div className="relative flex h-full w-full items-center px-2 select-none pointer-events-none gap-2">
+          <div className="w-5 h-5 rounded bg-violet-600/60 border border-white/10 flex items-center justify-center backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span className="text-[10px] font-bold text-white/90 truncate">{clip.name || "Overlay"}</span>
         </div>
       ) : isSticker ? (
         <div className="relative flex h-full w-full items-center px-2 select-none pointer-events-none gap-2">
-          {mediaAsset?.path ? (
-            <img
-              src={resolveMediaSrc(mediaAsset.path)}
-              alt=""
-              className="w-5 h-5 object-contain filter brightness-0 invert opacity-90 shrink-0"
-              draggable={false}
-            />
-          ) : (
-            <div className="w-5 h-5 flex items-center justify-center text-xs shrink-0">🎨</div>
-          )}
-          <span className="text-[10px] font-bold text-white/90 truncate">
-            {mediaAsset?.name || "Sticker"}
-          </span>
+          {mediaAsset?.path ? <img src={resolveMediaSrc(mediaAsset.path)} alt="" className="w-5 h-5 object-contain filter brightness-0 invert opacity-90 shrink-0" draggable={false} /> : <div className="w-5 h-5 flex items-center justify-center text-xs shrink-0">🎨</div>}
+          <span className="text-[10px] font-bold text-white/90 truncate">{mediaAsset?.name || "Sticker"}</span>
         </div>
       ) : (
         <div className="flex h-full min-h-0 w-full flex-col gap-1 overflow-hidden px-1 py-1">

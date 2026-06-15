@@ -4,7 +4,7 @@ import { EnhancedMediaPanel } from "./media-panel/EnhancedMediaPanel";
 import { PreviewPanel } from "./preview/PreviewPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { Timeline } from "./timeline/Timeline";
-import { getInsertIndexForNewTrack, useTimelineStore } from "@/store/timelineStore";
+import { getInsertIndexForNewTrack, getInsertIndexForNewTrackGrouped, useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
 import { generateId } from "@/lib/utils/id";
 import { createClipFromAsset } from "@/lib/timeline/timelineClip";
@@ -14,7 +14,7 @@ import { DEFAULT_PLACEMENT_POLICY, resolveAddToTimelinePlacement, resolveDefault
 import { getPlaybackClock } from "@/hooks/usePlaybackClock";
 import { useWindowSize } from "@/hooks/useWindowSize";
 import { MobileEditorLayout } from "./MobileEditorLayout";
-import type { MediaAsset } from "@/types";
+import type { MediaAsset, TrackType } from "@/types";
 import { useUIStore } from "@/store/uiStore";
 import { useAudioLibraryStore } from "@/features/audio-library/store/audioLibraryStore";
 import { useStickersStore } from "@/features/stickers/store/stickersStore";
@@ -59,7 +59,7 @@ export const EditorLayout: React.FC = () => {
   };
   const { getCachedFile } = useAudioLibraryStore();
 
-  const handleAddToTimeline = (item: any, type: string) => {
+  const handleAddToTimeline = async (item: any, type: string) => {
     // Get current timeline state
     const { tracks, clips } = getTimelineState();
 
@@ -375,7 +375,8 @@ export const EditorLayout: React.FC = () => {
       let targetTrackId = placement.targetTrackId;
       if (placement.shouldCreateTrack || !targetTrackId) {
         const latestTracks = useTimelineStore.getState().tracks;
-        const insertIndex = getInsertIndexForNewTrack(latestTracks, "filter");
+        const latestClips = useTimelineStore.getState().clips;
+        const insertIndex = getInsertIndexForNewTrackGrouped(latestTracks, latestClips, "filter", item.id);
         targetTrackId = insertTrackAt("filter", insertIndex);
       }
 
@@ -405,6 +406,164 @@ export const EditorLayout: React.FC = () => {
 
       addClip(filterClip as any);
       useProjectStore.getState().showToast(`Added ${cachedFilter.filter.name} filter`);
+    } else if (type === "video-effects" || type === "body-effects") {
+      console.log("[EditorLayout] Handling video/body effect:", { type, itemId: item.id, itemName: item.name });
+
+      // Video effects and body effects must be downloaded first
+      const cachedEffect = useVideoEffectsStore.getState().getCachedEffect(item.id);
+
+      if (!cachedEffect) {
+        console.error("[EditorLayout] Effect not downloaded yet:", item.id);
+        useProjectStore.getState().showToast("Effect not downloaded yet", "warning");
+        return;
+      }
+
+      console.log("[EditorLayout] Effect is cached:", cachedEffect);
+
+      // Create effect clip on timeline (same pattern as filter clips)
+      const effectTrackType: TrackType = type === "body-effects" ? "body-effect" : "video-effect";
+
+      const placement = resolveAddToTimelinePlacement({
+        asset: { type: "video", id: item.id, trackType: effectTrackType },
+        tracks,
+        clips,
+        playheadTime: getPlaybackClock().time,
+        sequenceEndTime: getTimelineEndTime(),
+      });
+
+      let targetTrackId = placement.targetTrackId;
+      if (placement.shouldCreateTrack || !targetTrackId) {
+        const latestTracks = useTimelineStore.getState().tracks;
+        const latestClips = useTimelineStore.getState().clips;
+        const insertIndex = getInsertIndexForNewTrackGrouped(latestTracks, latestClips, effectTrackType, item.id);
+        targetTrackId = insertTrackAt(effectTrackType, insertIndex);
+      }
+
+      if (!targetTrackId) {
+        console.error("[EditorLayout] Failed to create track for effect");
+        return;
+      }
+
+      const defaultIntensity = item.intensity?.default !== undefined ? item.intensity.default / 100 : 0.8;
+
+      const effectClip = {
+        id: generateId(type === "body-effects" ? "body-effect-clip" : "video-effect-clip"),
+        trackId: targetTrackId,
+        mediaId: item.id,
+        startTime: placement.startTime,
+        duration: 5.0,
+        trimIn: 0,
+        trimOut: 5.0,
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        opacity: 1.0,
+        rotation: 0,
+        kind: type === "body-effects" ? ("body-effect" as const) : ("video-effect" as const),
+        name: item.name || "Effect",
+        intensity: defaultIntensity,
+        renderer: item.renderer || item.id,
+        params: item.params || {},
+        ...(type === "body-effects" && item.requirements ? { requirements: item.requirements } : {}),
+      };
+
+      console.log("[EditorLayout] Creating effect clip:", effectClip);
+
+      addClip(effectClip as any);
+      useProjectStore.getState().showToast(`Added ${item.name} effect`);
+
+      console.log("[EditorLayout] Effect clip added successfully");
+    } else if (type === "animated-overlays") {
+      console.log("[EditorLayout] Handling animated overlay:", { type, itemId: item.id, itemName: item.name });
+
+      // Check if this is a local overlay (has _isLocal flag)
+      const isLocal = (item as any)._isLocal === true;
+      let resolvedPath: string;
+      let duration: number;
+      let defaultOpacity: number;
+      let blendMode: string;
+
+      if (isLocal) {
+        // Local overlay - use object URL directly
+        console.log("[EditorLayout] Using local overlay:", item);
+        resolvedPath = item.url; // Object URL from EffectsTab
+        duration = item.duration;
+        defaultOpacity = item.recommended?.opacity || 1.0;
+        blendMode = item.recommended?.blendMode || item.blendMode || "normal";
+      } else {
+        // Remote overlay - must be downloaded first
+        const cachedOverlay = useVideoEffectsStore.getState().getCachedOverlayVideo(item.id);
+
+        if (!cachedOverlay) {
+          console.error("[EditorLayout] Overlay not downloaded yet:", item.id);
+          useProjectStore.getState().showToast("Overlay not downloaded yet", "warning");
+          return;
+        }
+
+        console.log("[EditorLayout] Overlay is cached:", cachedOverlay);
+
+        // Get resolved local path for the overlay video
+        const { appCacheDir, join } = await import("@tauri-apps/api/path");
+        const { convertFileSrc } = await import("@tauri-apps/api/core");
+        const appCache = await appCacheDir();
+        const absolutePath = await join(appCache, cachedOverlay.localPath);
+        resolvedPath = convertFileSrc(absolutePath);
+        duration = cachedOverlay.metadata.duration;
+        defaultOpacity = cachedOverlay.metadata.defaultOpacity || 1.0;
+        blendMode = cachedOverlay.metadata.blendMode || "normal";
+      }
+
+      // Create overlay clip on timeline
+      const overlayTrackType: TrackType = "animated-overlay";
+
+      const placement = resolveAddToTimelinePlacement({
+        asset: { type: "video", id: item.id, trackType: overlayTrackType },
+        tracks,
+        clips,
+        playheadTime: getPlaybackClock().time,
+        sequenceEndTime: getTimelineEndTime(),
+      });
+
+      let targetTrackId = placement.targetTrackId;
+      if (placement.shouldCreateTrack || !targetTrackId) {
+        const latestTracks = useTimelineStore.getState().tracks;
+        const latestClips = useTimelineStore.getState().clips;
+        const insertIndex = getInsertIndexForNewTrackGrouped(latestTracks, latestClips, overlayTrackType, item.id);
+        targetTrackId = insertTrackAt(overlayTrackType, insertIndex);
+      }
+
+      if (!targetTrackId) {
+        console.error("[EditorLayout] Failed to create track for overlay");
+        return;
+      }
+      const overlayClip = {
+        id: generateId("animated-overlay-clip"),
+        trackId: targetTrackId,
+        mediaId: item.id,
+        startTime: placement.startTime,
+        duration: duration,
+        trimIn: 0,
+        trimOut: duration,
+        x: 0,
+        y: 0,
+        width: project?.canvasWidth || 1920,
+        height: project?.canvasHeight || 1080,
+        opacity: defaultOpacity,
+        rotation: 0,
+        kind: "animated-overlay" as const,
+        name: item.name || "Overlay",
+        sourceUrl: resolvedPath,
+        blendMode: blendMode as any,
+        loop: item.loopable !== false,
+      };
+
+      console.log("[EditorLayout] Creating overlay clip:", overlayClip);
+
+      addClip(overlayClip as any);
+      useProjectStore.getState().showToast(`Added ${item.name} overlay${isLocal ? " (local)" : ""}`);
+
+      console.log("[EditorLayout] Overlay clip added successfully");
     }
   };
 

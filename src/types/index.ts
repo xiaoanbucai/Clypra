@@ -76,7 +76,7 @@ export interface Project {
   timelineSchemaVersion?: number;
 }
 
-export type TrackType = "video" | "audio" | "text" | "sticker" | "filter";
+export type TrackType = "video" | "audio" | "text" | "sticker" | "filter" | "video-effect" | "body-effect" | "animated-overlay";
 
 export interface Track {
   id: string;
@@ -118,7 +118,7 @@ export interface MediaAsset {
   rotation?: number;
 }
 
-export type ClipKind = "video" | "audio" | "image" | "sticker" | "text" | "filter";
+export type ClipKind = "video" | "audio" | "image" | "sticker" | "text" | "filter" | "video-effect" | "body-effect" | "animated-overlay";
 
 export interface Clip {
   id: string;
@@ -225,6 +225,35 @@ export interface FilterClip extends Clip {
   name: string;
   intensity: number; // 0.0 to 1.0
   swatch?: string;
+}
+
+export interface VideoEffectClip extends Clip {
+  kind: "video-effect";
+  name: string;
+  intensity: number; // 0.0 to 1.0
+  renderer: string; // "shake", "blur", "glitch", etc.
+  params: Record<string, any>; // Effect-specific parameters
+}
+
+export interface BodyEffectClip extends Clip {
+  kind: "body-effect";
+  name: string;
+  intensity: number; // 0.0 to 1.0
+  renderer: string; // "body_glow", "body_outline", etc.
+  params: Record<string, any>; // Effect-specific parameters
+  requirements?: {
+    bodySegmentation?: boolean;
+    minConfidence?: number;
+  };
+}
+
+export interface AnimatedOverlayClip extends Clip {
+  kind: "animated-overlay";
+  name: string;
+  sourceUrl: string; // Local cached video path (via convertFileSrc)
+  opacity: number; // 0.0 to 1.0
+  blendMode: BlendMode;
+  loop: boolean;
 }
 
 /** Word-level timestamp for karaoke-style caption highlighting */

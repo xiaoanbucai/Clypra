@@ -92,12 +92,18 @@ export type EffectRenderer =
   | "speed_ramp"
   | "freeze_frame"
   | "echo"
-  | "strobe";
+  | "strobe"
+
+  // Body-tracked effects
+  | "body-segmentation-glow"
+  | "body_glow"
+  | "body_outline"
+  | "body_particles";
 
 export interface EffectPreset {
   id: string;
   name: string;
-  type: "effect";
+  type: "effect" | "video-effect" | "body-effect";
   category: string; // "camera", "distortion", "color", "time", etc.
   description: string;
   thumbnail: string;
@@ -118,6 +124,11 @@ export interface EffectPreset {
     max: number;
     default: number;
     step: number;
+  };
+
+  requirements?: {
+    bodySegmentation?: boolean;
+    minConfidence?: number;
   };
 }
 

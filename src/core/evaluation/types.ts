@@ -273,8 +273,11 @@ export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" 
  */
 export interface EvaluatedEffect {
   readonly effectId: string;
-  readonly type: string;
+  readonly type: "video_effect" | "body_effect";
+  readonly renderer: string;
   readonly parameters: Record<string, any>;
+  readonly intensity: number;
+  readonly localTime: number;
 }
 
 /**

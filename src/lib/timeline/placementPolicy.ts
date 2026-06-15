@@ -31,8 +31,8 @@ export function resolveDefaultFitModeForAsset(asset: Pick<MediaAsset, "type">): 
   return DEFAULT_PLACEMENT_POLICY.defaultVisualFitMode;
 }
 
-export function resolveTargetTrackType(asset: { type: MediaAsset["type"]; id?: string; trackType?: TrackType }): "video" | "audio" | "sticker" | "text" | "filter" {
-  // Allow explicit track type override (for text and filter clips)
+export function resolveTargetTrackType(asset: { type: MediaAsset["type"]; id?: string; trackType?: TrackType }): "video" | "audio" | "sticker" | "text" | "filter" | "video-effect" | "body-effect" | "animated-overlay" {
+  // Allow explicit track type override (for text, filter, effect, and overlay clips)
   if (asset.trackType) return asset.trackType;
   if (asset.id?.startsWith("sticker-")) return "sticker";
   return asset.type === "audio" ? "audio" : "video";
@@ -73,7 +73,7 @@ interface ResolveAddPlacementParams {
 
 interface AddPlacementDecision {
   intent: AddPlacementIntent;
-  trackType: "video" | "audio" | "sticker" | "text" | "filter";
+  trackType: "video" | "audio" | "sticker" | "text" | "filter" | "video-effect" | "body-effect" | "animated-overlay";
   startTime: number;
   targetTrackId: string | null;
   shouldCreateTrack: boolean;

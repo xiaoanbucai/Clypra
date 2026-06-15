@@ -295,9 +295,18 @@ export function toRustMediaAsset(frontend: MediaAsset): RustMediaAsset {
  * @returns Rust Track (snake_case)
  */
 export function toRustTrack(frontend: Track): RustTrack {
+  // Map new track types to existing Rust types
+  let rustType: RustTrack["type"];
+
+  if (frontend.type === "video-effect" || frontend.type === "body-effect" || frontend.type === "animated-overlay") {
+    rustType = "video"; // Map effect/overlay tracks to video type for Rust
+  } else {
+    rustType = frontend.type as RustTrack["type"];
+  }
+
   return {
     id: frontend.id,
-    type: frontend.type,
+    type: rustType,
     name: frontend.name,
     muted: frontend.muted,
     locked: frontend.locked,

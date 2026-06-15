@@ -6,7 +6,7 @@ import { PreviewPanel } from "./preview/PreviewPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { Timeline } from "./timeline/Timeline";
 import { BottomSheet } from "../ui/BottomSheet";
-import { getInsertIndexForNewTrack, useTimelineStore } from "@/store/timelineStore";
+import { getInsertIndexForNewTrack, getInsertIndexForNewTrackGrouped, useTimelineStore } from "@/store/timelineStore";
 import { useProjectStore } from "@/store/projectStore";
 import { generateId } from "@/lib/utils/id";
 import { useUIStore } from "@/store/uiStore";
@@ -311,7 +311,8 @@ export const MobileEditorLayout: React.FC = () => {
       let targetTrackId = placement.targetTrackId;
       if (placement.shouldCreateTrack || !targetTrackId) {
         const latestTracks = useTimelineStore.getState().tracks;
-        const insertIndex = getInsertIndexForNewTrack(latestTracks, "filter");
+        const latestClips = useTimelineStore.getState().clips;
+        const insertIndex = getInsertIndexForNewTrackGrouped(latestTracks, latestClips, "filter", item.id);
         targetTrackId = insertTrackAt("filter", insertIndex);
       }
 

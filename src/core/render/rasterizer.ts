@@ -15,7 +15,7 @@
  * - Rasterizer NEVER fetches/decodes (uses pre-resolved resources)
  */
 
-import type { EvaluatedScene, EvaluatedMediaLayer, EvaluatedTextLayer } from "../evaluation/types";
+import type { EvaluatedEffect, EvaluatedScene, EvaluatedMediaLayer, EvaluatedTextLayer } from "../evaluation/types";
 import { resolveFilterToIR, compileFilterIRToCSS } from "./filterIR";
 import { getResourceCache } from "../resources/ResourceCache";
 import { evaluateScene as engineEvaluateScene, textEffectConfigToScene, type TextEffectConfig, layerToTextEffectConfig, CanvasDevice, TextEffectBuilder } from "@clypra/engine";
@@ -25,6 +25,7 @@ import { useTimelineStore } from "../../store/timelineStore";
 import { effectBleed } from "../../lib/text/textClip";
 import lottie from "lottie-web";
 import { useStickersStore } from "../../features/stickers/store/stickersStore";
+import { segmentBodyMask } from "../../features/body-effects/segmentation/bodySegmentationWorkerClient";
 
 interface LottieAnimationCacheEntry {
   anim: any;
@@ -431,7 +432,7 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
           cacheEntry.anim.goToAndStop(frame, true);
           await Promise.resolve();
 
-          drawMediaWithSourceRotation(ctx, cacheEntry.canvas, width, height, layer.sourceRotation, layer.effects, layer.filter);
+          await drawMediaWithSourceRotation(ctx, cacheEntry.canvas, width, height, layer.sourceRotation, layer.effects, layer.filter);
           return;
         }
       }
@@ -446,7 +447,7 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
         if (video.readyState >= 2) {
           // HAVE_CURRENT_DATA — element is loaded, draw it
           // Apply source rotation BEFORE drawing (critical for export)
-          drawMediaWithSourceRotation(ctx, video, width, height, layer.sourceRotation, layer.effects, layer.filter);
+          await drawMediaWithSourceRotation(ctx, video, width, height, layer.sourceRotation, layer.effects, layer.filter);
           return;
         }
         // Element exists but still loading — draw silent placeholder (no error)
@@ -499,7 +500,7 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
     }
 
     // Draw centered (after rotation transform) with source rotation applied
-    drawMediaWithSourceRotation(ctx, imageBitmap, width, height, layer.sourceRotation, layer.effects, layer.filter);
+    await drawMediaWithSourceRotation(ctx, imageBitmap, width, height, layer.sourceRotation, layer.effects, layer.filter);
 
     // Only close if we created it (not from resource manager)
     if (!layer.resourceHandle && imageBitmap) {
@@ -556,134 +557,449 @@ function drawLoadingPlaceholder(ctx: CanvasRenderingContext2D | OffscreenCanvasR
  * @param height - Target height (layer height in canvas)
  * @param sourceRotation - Rotation from container metadata (0, 90, 180, 270)
  */
-function drawMediaWithSourceRotation(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, source: HTMLVideoElement | ImageBitmap | HTMLCanvasElement, width: number, height: number, sourceRotation?: number, effects?: import("../evaluation/types").EvaluatedEffect[], filter?: { id: string; name: string; intensity: number }): void {
+async function drawMediaWithSourceRotation(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, source: HTMLVideoElement | ImageBitmap | HTMLCanvasElement, width: number, height: number, sourceRotation?: number, effects?: EvaluatedEffect[], filter?: { id: string; name: string; intensity: number }): Promise<void> {
   ctx.save();
-
-  // 1. Build and apply CSS filter string using Filter IR
-  let filterString = "";
-  if (filter) {
-    const { id, intensity } = filter;
-    const ir = resolveFilterToIR(id, intensity);
-    filterString = compileFilterIRToCSS(ir);
-  }
-
-  // Check for CSS-based effects
-  let blurIntensity = 0;
-  if (effects && effects.length > 0) {
-    const blurFx = effects.find((fx) => fx.effectId === "fx-blur");
-    if (blurFx && blurFx.parameters) {
-      blurIntensity = blurFx.parameters.intensity ?? 0.5;
-      filterString += (filterString ? " " : "") + `blur(${blurIntensity * 20}px)`;
-    }
-  }
-
-  if (filterString) {
-    ctx.filter = filterString;
-  }
-
-  // 2. Resolve source dimensions & rotation transposition
   const isTransposed = sourceRotation === 90 || sourceRotation === 270;
   const drawWidth = isTransposed ? height : width;
   const drawHeight = isTransposed ? width : height;
+  const frameCanvas = await renderMediaFrame(source, drawWidth, drawHeight, effects, filter);
 
   if (sourceRotation && sourceRotation !== 0) {
     ctx.rotate((sourceRotation * Math.PI) / 180);
   }
 
-  // 3. Render pixelate or chromatic aberration or normal
-  const pixelateFx = effects?.find((fx) => fx.effectId === "fx-pixelate");
-  if (pixelateFx && pixelateFx.parameters && pixelateFx.parameters.intensity > 0.05) {
-    const intensity = pixelateFx.parameters.intensity;
-    // Calculate pixel scale factor
-    const scale = Math.max(0.02, 1 - intensity * 0.95);
-    const w = Math.max(4, Math.floor(drawWidth * scale));
-    const h = Math.max(4, Math.floor(drawHeight * scale));
+  ctx.drawImage(frameCanvas, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  CanvasDevice.release(frameCanvas);
+  ctx.restore();
+}
 
-    // Create a temporary offscreen canvas
-    const tempCanvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : document.createElement("canvas");
+async function renderMediaFrame(source: HTMLVideoElement | ImageBitmap | HTMLCanvasElement, width: number, height: number, effects: EvaluatedEffect[] | undefined, filter?: { id: string; name: string; intensity: number }): Promise<HTMLCanvasElement | OffscreenCanvas> {
+  const canvas = CanvasDevice.acquire(Math.max(1, Math.ceil(width)), Math.max(1, Math.ceil(height)));
+  const frameCtx = canvas.getContext("2d", { alpha: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!frameCtx) return canvas;
 
-    if (tempCanvas instanceof HTMLCanvasElement) {
-      tempCanvas.width = w;
-      tempCanvas.height = h;
-    }
+  if (typeof frameCtx.setTransform === "function") {
+    frameCtx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  frameCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const tempCtx = tempCanvas.getContext("2d") as any;
-    if (tempCtx) {
-      tempCtx.drawImage(source, 0, 0, w, h);
+  const cssFilter = buildMediaFilter(filter, effects);
+  if (cssFilter) frameCtx.filter = cssFilter;
+  frameCtx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  frameCtx.filter = "none";
 
-      ctx.save();
-      ctx.imageSmoothingEnabled = false;
-      (ctx as any).mozImageSmoothingEnabled = false;
-      (ctx as any).webkitImageSmoothingEnabled = false;
-      (ctx as any).msImageSmoothingEnabled = false;
+  const bodyMasks = await prepareBodyMasks(canvas, effects, canvas.width, canvas.height);
 
-      ctx.drawImage(tempCanvas as any, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-      ctx.restore();
-    } else {
-      ctx.drawImage(source, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-    }
-  } else {
-    // Check Chromatic Aberration
-    const chromaticFx = effects?.find((fx) => fx.effectId === "fx-chromatic");
-    if (chromaticFx && chromaticFx.parameters && chromaticFx.parameters.intensity > 0.05) {
-      const shift = chromaticFx.parameters.intensity * 8; // Max 8px shift
+  for (const effect of effects || []) {
+    applyRasterEffect(frameCtx, effect, canvas.width, canvas.height, bodyMasks);
+  }
 
-      // Draw Red Channel shift
-      ctx.save();
-      ctx.globalAlpha = ctx.globalAlpha * 0.6;
-      ctx.translate(-shift, 0);
-      ctx.drawImage(source, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-      ctx.restore();
+  return canvas;
+}
 
-      // Draw Cyan (Green/Blue) Channel shift
-      ctx.save();
-      ctx.globalAlpha = ctx.globalAlpha * 0.6;
-      ctx.translate(shift, 0);
-      ctx.globalCompositeOperation = "screen";
-      ctx.drawImage(source, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-      ctx.restore();
-    } else {
-      ctx.drawImage(source, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+async function prepareBodyMasks(source: HTMLCanvasElement | OffscreenCanvas, effects: EvaluatedEffect[] | undefined, width: number, height: number): Promise<Map<string, ImageData>> {
+  const bodyEffects = (effects || []).filter((effect) => isBodyRenderer(effect.renderer || effect.effectId));
+  const masks = new Map<string, ImageData>();
+  if (bodyEffects.length === 0) return masks;
+
+  await Promise.all(
+    bodyEffects.map(async (effect) => {
+      const mask = await segmentBodyMask(source as unknown as CanvasImageSource, {
+        effectId: effect.effectId,
+        renderer: effect.renderer,
+        time: effect.localTime,
+        width,
+        height,
+        minConfidence: Number(effect.parameters.minConfidence ?? 0.7),
+      });
+      if (mask) masks.set(effect.effectId, mask);
+    }),
+  );
+
+  return masks;
+}
+
+function buildMediaFilter(filter: { id: string; name: string; intensity: number } | undefined, effects: EvaluatedEffect[] | undefined): string {
+  const filters: string[] = [];
+  if (filter) {
+    const ir = resolveFilterToIR(filter.id, filter.intensity);
+    const cssFilter = compileFilterIRToCSS(ir);
+    if (cssFilter) filters.push(cssFilter);
+  }
+
+  for (const effect of effects || []) {
+    const renderer = normalizeRendererName(effect.renderer || effect.effectId);
+    if (renderer === "blur" || effect.effectId === "fx-blur") {
+      const blurAmount = Number(effect.parameters.blurAmount ?? 20) * effect.intensity;
+      if (blurAmount > 0.1) filters.push(`blur(${blurAmount}px)`);
     }
   }
 
-  // 4. Draw overlays (Vignette, Film Grain)
-  if (effects && effects.length > 0) {
-    // Vignette Overlay
-    const vignetteFx = effects.find((fx) => fx.effectId === "fx-vignette");
-    if (vignetteFx && vignetteFx.parameters) {
-      ctx.save();
-      ctx.filter = "none"; // Clear filters for overlay drawing
-      const intensity = vignetteFx.parameters.intensity ?? 0.5;
-      const radius = Math.sqrt((drawWidth / 2) ** 2 + (drawHeight / 2) ** 2);
-      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-      grad.addColorStop(0, "transparent");
-      grad.addColorStop(0.5, `rgba(0, 0, 0, ${intensity * 0.25})`);
-      grad.addColorStop(1, `rgba(0, 0, 0, ${intensity * 0.95})`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(-drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-      ctx.restore();
-    }
+  return filters.join(" ");
+}
 
-    // Film Grain Overlay
-    const grainFx = effects.find((fx) => fx.effectId === "fx-film-grain");
-    if (grainFx && grainFx.parameters) {
-      ctx.save();
-      ctx.filter = "none"; // Clear filters for overlay drawing
-      const intensity = grainFx.parameters.intensity ?? 0.5;
-      const dotsCount = Math.floor((drawWidth * drawHeight) / 100) * intensity;
-      for (let d = 0; d < dotsCount; d++) {
-        const rx = (Math.random() - 0.5) * drawWidth;
-        const ry = (Math.random() - 0.5) * drawHeight;
-        const rsize = 1 + Math.random() * 1.5;
-        ctx.fillStyle = Math.random() > 0.5 ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)";
-        ctx.fillRect(rx, ry, rsize, rsize);
+function applyRasterEffect(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number, bodyMasks: Map<string, ImageData>): void {
+  if (effect.intensity <= 0.001) return;
+
+  const renderer = normalizeRendererName(effect.renderer || effect.effectId);
+  switch (renderer) {
+    case "glitch":
+      renderGlitch(ctx, effect, width, height);
+      break;
+    case "rgb_split":
+    case "chromatic_aberration":
+    case "chromatic":
+      renderRGBSplit(ctx, effect, width, height);
+      break;
+    case "pixelate":
+      renderPixelate(ctx, effect, width, height);
+      break;
+    case "scanlines":
+      renderScanlines(ctx, effect, width, height);
+      break;
+    case "film_grain":
+    case "grain":
+      renderFilmGrain(ctx, effect, width, height);
+      break;
+    case "vignette":
+      renderVignette(ctx, effect, width, height);
+      break;
+    case "glow":
+      renderFrameGlow(ctx, effect, width, height);
+      break;
+    case "body_segmentation_glow":
+    case "body_glow":
+      renderBodySegmentationGlow(ctx, effect, width, height, bodyMasks.get(effect.effectId));
+      break;
+    case "body_outline":
+      renderBodyOutline(ctx, effect, width, height, bodyMasks.get(effect.effectId));
+      break;
+    case "body_particles":
+      renderBodyParticles(ctx, effect, width, height, bodyMasks.get(effect.effectId));
+      break;
+    default:
+      if (!renderer.includes("blur")) {
+        console.warn(`[Rasterizer] Unknown effect renderer: ${effect.renderer}`);
       }
-      ctx.restore();
+  }
+}
+
+function normalizeRendererName(value: string): string {
+  return value.replace(/^fx-/, "").replace(/-/g, "_").toLowerCase();
+}
+
+function isBodyRenderer(value: string): boolean {
+  const renderer = normalizeRendererName(value);
+  return renderer === "body_segmentation_glow" || renderer === "body_glow" || renderer === "body_outline" || renderer === "body_particles";
+}
+
+function renderPixelate(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const pixelSize = Math.max(2, Math.floor(Number(effect.parameters.pixelSize ?? 18) * effect.intensity));
+  const w = Math.max(4, Math.floor(width / pixelSize));
+  const h = Math.max(4, Math.floor(height / pixelSize));
+  const temp = CanvasDevice.acquire(w, h);
+  const tempCtx = temp.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!tempCtx) {
+    CanvasDevice.release(temp);
+    return;
+  }
+
+  tempCtx.drawImage(ctx.canvas as any, 0, 0, w, h);
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(temp, 0, 0, width, height);
+  ctx.restore();
+  CanvasDevice.release(temp);
+}
+
+function renderRGBSplit(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const shift = Number(effect.parameters.rgbSplit ?? effect.parameters.splitDistance ?? 8) * effect.intensity;
+  if (shift < 0.25) return;
+  const temp = CanvasDevice.acquire(width, height);
+  const tempCtx = temp.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!tempCtx) {
+    CanvasDevice.release(temp);
+    return;
+  }
+
+  tempCtx.drawImage(ctx.canvas as any, 0, 0);
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = Math.min(0.65, 0.25 + effect.intensity * 0.35);
+  ctx.drawImage(temp, -shift, 0);
+  ctx.drawImage(temp, shift, 0);
+  ctx.restore();
+  CanvasDevice.release(temp);
+}
+
+function renderGlitch(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const amount = Math.max(1, Number(effect.parameters.glitchIntensity ?? 24) * effect.intensity);
+  const slices = Math.max(1, Math.floor(Number(effect.parameters.sliceCount ?? 8) * effect.intensity));
+  const seed = Math.floor((effect.localTime || 0) * 24);
+
+  for (let i = 0; i < slices; i++) {
+    const y = Math.floor(pseudoRandom(seed + i * 13) * height);
+    const sliceHeight = Math.max(1, Math.floor(4 + pseudoRandom(seed + i * 19) * 24));
+    const offset = Math.floor((pseudoRandom(seed + i * 29) - 0.5) * amount * 2);
+    try {
+      const imageData = ctx.getImageData(0, y, width, Math.min(sliceHeight, height - y));
+      ctx.putImageData(imageData, offset, y);
+    } catch {
+      break;
     }
+  }
+
+  renderRGBSplit(ctx, { ...effect, parameters: { ...effect.parameters, splitDistance: amount * 0.4 } }, width, height);
+}
+
+function renderScanlines(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const count = Math.max(20, Number(effect.parameters.scanlineCount ?? 120));
+  const spacing = height / count;
+  ctx.save();
+  ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.45, effect.intensity * 0.28)})`;
+  for (let y = 0; y < height; y += spacing) {
+    ctx.fillRect(0, y, width, Math.max(1, spacing * 0.45));
+  }
+  ctx.restore();
+}
+
+function renderFilmGrain(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const density = Math.floor((width * height) / 180);
+  const count = Math.floor(density * effect.intensity * Number(effect.parameters.grainIntensity ?? 1));
+  const seed = Math.floor((effect.localTime || 0) * 30);
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const x = pseudoRandom(seed + i * 3) * width;
+    const y = pseudoRandom(seed + i * 7) * height;
+    const alpha = 0.04 + pseudoRandom(seed + i * 11) * 0.08;
+    ctx.fillStyle = pseudoRandom(seed + i * 17) > 0.5 ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`;
+    ctx.fillRect(x, y, 1.5, 1.5);
+  }
+  ctx.restore();
+}
+
+function renderVignette(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const radius = Math.sqrt(width * width + height * height) / 2;
+  const gradient = ctx.createRadialGradient(width / 2, height / 2, radius * 0.2, width / 2, height / 2, radius);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(0.58, `rgba(0,0,0,${effect.intensity * 0.14})`);
+  gradient.addColorStop(1, `rgba(0,0,0,${effect.intensity * 0.86})`);
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
+function renderFrameGlow(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number): void {
+  const color = String(effect.parameters.glowColor ?? "#00ffff");
+  const blur = Number(effect.parameters.glowRadius ?? 20) * effect.intensity;
+  const temp = CanvasDevice.acquire(width, height);
+  const tempCtx = temp.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!tempCtx) {
+    CanvasDevice.release(temp);
+    return;
+  }
+
+  tempCtx.drawImage(ctx.canvas as any, 0, 0);
+  tempCtx.globalCompositeOperation = "source-in";
+  tempCtx.fillStyle = color;
+  tempCtx.fillRect(0, 0, width, height);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = Math.min(0.9, effect.intensity);
+  ctx.filter = `blur(${blur}px)`;
+  ctx.drawImage(temp, 0, 0);
+  ctx.filter = "none";
+  ctx.restore();
+  CanvasDevice.release(temp);
+}
+
+function renderBodySegmentationGlow(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number, providedMask?: ImageData): void {
+  const original = CanvasDevice.acquire(width, height);
+  const originalCtx = original.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!originalCtx) {
+    CanvasDevice.release(original);
+    return;
+  }
+  originalCtx.drawImage(ctx.canvas as any, 0, 0);
+
+  const mask = providedMask ? imageDataToCanvas(providedMask) : buildLocalBodyMask(originalCtx, width, height);
+  const maskCtx = mask.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!maskCtx) {
+    CanvasDevice.release(mask);
+    CanvasDevice.release(original);
+    return;
+  }
+
+  const color = String(effect.parameters.glowColor ?? "#00ffff");
+  const radius = Math.max(2, Number(effect.parameters.glowRadius ?? 22) * effect.intensity);
+  const alpha = Math.min(1, Number(effect.parameters.glowIntensity ?? 0.8) * effect.intensity);
+  maskCtx.save();
+  maskCtx.globalCompositeOperation = "source-in";
+  maskCtx.fillStyle = color;
+  maskCtx.fillRect(0, 0, width, height);
+  maskCtx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-over";
+  ctx.globalAlpha = alpha;
+  ctx.filter = `blur(${radius}px)`;
+  ctx.drawImage(mask, 0, 0);
+  ctx.filter = `blur(${Math.max(1, radius * 0.45)}px)`;
+  ctx.drawImage(mask, 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
+  ctx.fillStyle = color;
+  ctx.globalAlpha = Math.min(0.35, alpha * 0.35);
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+
+  CanvasDevice.release(mask);
+  CanvasDevice.release(original);
+}
+
+function renderBodyOutline(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number, providedMask?: ImageData): void {
+  const source = CanvasDevice.acquire(width, height);
+  const sourceCtx = source.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!sourceCtx) {
+    CanvasDevice.release(source);
+    return;
+  }
+  sourceCtx.drawImage(ctx.canvas as any, 0, 0);
+
+  const mask = providedMask ? imageDataToCanvas(providedMask) : buildLocalBodyMask(sourceCtx, width, height);
+  const color = String(effect.parameters.outlineColor ?? effect.parameters.glowColor ?? "#ffffff");
+  const thickness = Math.max(1, Number(effect.parameters.thickness ?? 5) * effect.intensity);
+
+  const maskCtx = mask.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (maskCtx) {
+    maskCtx.save();
+    maskCtx.globalCompositeOperation = "source-in";
+    maskCtx.fillStyle = color;
+    maskCtx.fillRect(0, 0, width, height);
+    maskCtx.restore();
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.globalAlpha = Math.min(1, effect.intensity);
+  ctx.filter = `blur(${thickness}px)`;
+  ctx.drawImage(mask, 0, 0);
+  ctx.filter = "none";
+  ctx.drawImage(mask, -thickness * 0.5, 0);
+  ctx.drawImage(mask, thickness * 0.5, 0);
+  ctx.drawImage(mask, 0, -thickness * 0.5);
+  ctx.drawImage(mask, 0, thickness * 0.5);
+  ctx.restore();
+
+  CanvasDevice.release(mask);
+  CanvasDevice.release(source);
+}
+
+function renderBodyParticles(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, effect: EvaluatedEffect, width: number, height: number, providedMask?: ImageData): void {
+  const source = CanvasDevice.acquire(width, height);
+  const sourceCtx = source.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!sourceCtx) {
+    CanvasDevice.release(source);
+    return;
+  }
+  sourceCtx.drawImage(ctx.canvas as any, 0, 0);
+
+  const mask = providedMask ? imageDataToCanvas(providedMask) : buildLocalBodyMask(sourceCtx, width, height);
+  const maskCtx = mask.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!maskCtx) {
+    CanvasDevice.release(mask);
+    CanvasDevice.release(source);
+    return;
+  }
+
+  let maskData: ImageData | null = null;
+  try {
+    maskData = maskCtx.getImageData(0, 0, width, height);
+  } catch {
+    maskData = null;
+  }
+
+  const color = String(effect.parameters.particleColor ?? effect.parameters.glowColor ?? "#00ffff");
+  const count = Math.floor(Number(effect.parameters.particleCount ?? 120) * effect.intensity);
+  const seed = Math.floor((effect.localTime || 0) * 24);
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = color;
+  ctx.globalAlpha = Math.min(0.85, 0.25 + effect.intensity * 0.6);
+
+  for (let i = 0; i < count; i++) {
+    const x = Math.floor(pseudoRandom(seed + i * 37) * width);
+    const y = Math.floor(pseudoRandom(seed + i * 43) * height);
+    const idx = (y * width + x) * 4 + 3;
+    if (maskData && maskData.data[idx] < 64) continue;
+    const drift = Math.sin((effect.localTime + i) * 2.1) * 8 * effect.intensity;
+    const size = 1 + pseudoRandom(seed + i * 53) * 3;
+    ctx.beginPath();
+    ctx.arc(x + drift, y - pseudoRandom(seed + i * 59) * 20 * effect.intensity, size, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   ctx.restore();
+  CanvasDevice.release(mask);
+  CanvasDevice.release(source);
+}
+
+function imageDataToCanvas(imageData: ImageData): HTMLCanvasElement | OffscreenCanvas {
+  const canvas = CanvasDevice.acquire(imageData.width, imageData.height);
+  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (ctx) {
+    ctx.putImageData(imageData, 0, 0);
+  }
+  return canvas;
+}
+
+function buildLocalBodyMask(sourceCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
+  const mask = CanvasDevice.acquire(width, height);
+  const maskCtx = mask.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+  if (!maskCtx) return mask;
+
+  try {
+    const imageData = sourceCtx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    let totalLuma = 0;
+    let samples = 0;
+    for (let i = 0; i < data.length; i += 16) {
+      totalLuma += data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+      samples++;
+    }
+    const avgLuma = samples > 0 ? totalLuma / samples : 96;
+    const threshold = Math.max(18, Math.min(180, avgLuma * 0.78));
+
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      const luma = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+      const chroma = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+      const confidence = alpha > 8 && (luma > threshold || chroma > 28) ? 255 : 0;
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = confidence;
+    }
+
+    maskCtx.putImageData(imageData, 0, 0);
+  } catch {
+    maskCtx.drawImage(sourceCtx.canvas as any, 0, 0);
+    maskCtx.globalCompositeOperation = "source-in";
+    maskCtx.fillStyle = "#ffffff";
+    maskCtx.fillRect(0, 0, width, height);
+  }
+
+  return mask;
+}
+
+function pseudoRandom(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
 }
 
 /**

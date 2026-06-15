@@ -79,6 +79,13 @@ export class EffectRenderer {
       freeze_frame: this.renderFreezeFrame,
       echo: this.renderEcho,
       strobe: this.renderStrobe,
+
+      // Body effects are handled in the canonical rasterizer where source
+      // frame pixels are available for mask generation.
+      "body-segmentation-glow": this.renderBodyEffectNoop,
+      body_glow: this.renderBodyEffectNoop,
+      body_outline: this.renderBodyEffectNoop,
+      body_particles: this.renderBodyEffectNoop,
     };
 
     return renderers[type] || null;
@@ -130,6 +137,11 @@ export class EffectRenderer {
   private static renderDolly(ctx: CanvasRenderingContext2D, params: EffectParameters, intensity: number, time: number): void {
     // Dolly is essentially zoom + slight rotation
     this.renderZoom(ctx, params, intensity, time);
+  }
+
+  private static renderBodyEffectNoop(): void {
+    // Body renderers require source-frame pixels and are dispatched from
+    // core/render/rasterizer.ts so preview and export share the same output.
   }
 
   // ============================================================================

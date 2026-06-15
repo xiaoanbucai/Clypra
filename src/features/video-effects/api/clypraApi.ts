@@ -385,4 +385,124 @@ export class VideoEffectsApi {
       server: serverResult,
     };
   }
+
+  // ============================================================================
+  // EFFECTS API (Video Effects & Body Effects)
+  // ============================================================================
+
+  /**
+   * Fetch the effects manifest with categories and counts
+   */
+  static async getEffectsManifest(): Promise<any> {
+    const res = await fetch(`${BASE}/effects/manifest`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load effects manifest: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Fetch all video effects
+   */
+  static async getVideoEffects(): Promise<EffectPreset[]> {
+    const res = await fetch(`${BASE}/effects/video`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load video effects: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Fetch all body effects
+   */
+  static async getBodyEffects(): Promise<EffectPreset[]> {
+    const res = await fetch(`${BASE}/effects/body`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load body effects: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Fetch a specific effect by ID
+   */
+  static async getEffectById(id: string): Promise<EffectPreset> {
+    const res = await fetch(`${BASE}/effects/${id}`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load effect "${id}": ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  // ============================================================================
+  // ANIMATED OVERLAYS API
+  // ============================================================================
+
+  /**
+   * Fetch the animated overlays manifest with categories and counts
+   */
+  static async getOverlaysManifest(): Promise<{ categories: Array<{ id: string; name: string; count: number }>; totalCount: number }> {
+    const res = await fetch(`${BASE}/overlays/manifest`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load overlays manifest: ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Fetch all overlays in a specific category
+   */
+  static async getOverlaysByCategory(category: string): Promise<OverlayAsset[]> {
+    const res = await fetch(`${BASE}/overlays/${category}`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load overlays for category "${category}": ${res.statusText}`);
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Fetch a specific overlay by ID
+   */
+  static async getOverlayById(category: string, id: string): Promise<OverlayAsset> {
+    const res = await fetch(`${BASE}/overlays/${category}/${id}`, {
+      cache: "reload",
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to load overlay "${id}": ${res.statusText}`);
+    }
+
+    return res.json();
+  }
 }

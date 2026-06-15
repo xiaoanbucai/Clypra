@@ -115,12 +115,15 @@ const trackHeights: Record<string, number> = {
   text: 30,
   sticker: 30,
   filter: 30,
+  "video-effect": 30,
+  "body-effect": 30,
+  "animated-overlay": 30,
 };
 const MIN_TRIM_DURATION_SEC = 1;
 
 /** Where to insert a new row when dropping off-track: video/text at top; audio under first video (or append if no video). */
 export function getInsertIndexForNewTrack(tracks: Track[], trackType: TrackType): number {
-  if (trackType === "video" || trackType === "text" || trackType === "sticker" || trackType === "filter") {
+  if (trackType === "video" || trackType === "text" || trackType === "sticker" || trackType === "filter" || trackType === "video-effect" || trackType === "body-effect") {
     return 0;
   }
   const mainIdx = tracks.findIndex((t) => t.type === "video");
@@ -128,6 +131,39 @@ export function getInsertIndexForNewTrack(tracks: Track[], trackType: TrackType)
     return mainIdx + 1;
   }
   return tracks.length;
+}
+
+/**
+ * Find the best insertion index for a new track, grouping effects/filters by their mediaId.
+ * For effects and filters, this places new tracks immediately adjacent to existing tracks
+ * that use the same effect/filter (same mediaId).
+ */
+export function getInsertIndexForNewTrackGrouped(tracks: Track[], clips: Clip[], trackType: TrackType, mediaId?: string): number {
+  // Only apply grouping logic for effects and filters
+  if (!mediaId || (trackType !== "filter" && trackType !== "video-effect" && trackType !== "body-effect" && trackType !== "animated-overlay")) {
+    return getInsertIndexForNewTrack(tracks, trackType);
+  }
+
+  // Find all tracks of the same type that have clips with the same mediaId
+  const siblingTrackIndices: number[] = [];
+
+  tracks.forEach((track, index) => {
+    if (track.type === trackType) {
+      const hasMatchingClip = clips.some((clip) => clip.trackId === track.id && clip.mediaId === mediaId);
+      if (hasMatchingClip) {
+        siblingTrackIndices.push(index);
+      }
+    }
+  });
+
+  // If we found sibling tracks with the same effect, insert immediately after the last one
+  if (siblingTrackIndices.length > 0) {
+    const lastSiblingIndex = Math.max(...siblingTrackIndices);
+    return lastSiblingIndex + 1;
+  }
+
+  // No siblings found, use default placement
+  return getInsertIndexForNewTrack(tracks, trackType);
 }
 
 /**
