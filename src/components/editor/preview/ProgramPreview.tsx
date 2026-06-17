@@ -112,7 +112,7 @@ export const ProgramPreview: React.FC = () => {
         changes.push(`${key} (${JSON.stringify(prevVal)} → ${JSON.stringify(currVal)})`);
       }
     });
-    console.log(`[ProgramPreview] Render #${renderCountRef.current} - Changed: ${changes.length > 0 ? changes.join(", ") : "unknown (no deps changed - likely setState or parent re-render)"}`);
+    // console.log(`[ProgramPreview] Render #${renderCountRef.current} - Changed: ${changes.length > 0 ? changes.join(", ") : "unknown (no deps changed - likely setState or parent re-render)"}`);
   } else {
     console.log(`[ProgramPreview] Render #${renderCountRef.current} - Initial mount`);
   }
@@ -437,13 +437,7 @@ export const ProgramPreview: React.FC = () => {
         const filterTracks = state.tracks.filter((t: any) => t.type === "filter" && (t.visible ?? true));
         const filterTrackIds = new Set(filterTracks.map((t: any) => t.id));
         const activeFilterClips = state.clips
-          .filter(
-            (c: any) =>
-              c.kind === "filter" &&
-              filterTrackIds.has(c.trackId) &&
-              c.startTime <= time &&
-              time < c.startTime + c.duration
-          )
+          .filter((c: any) => c.kind === "filter" && filterTrackIds.has(c.trackId) && c.startTime <= time && time < c.startTime + c.duration)
           .sort((a: any, b: any) => {
             const trackA = state.tracks.findIndex((t: any) => t.id === a.trackId);
             const trackB = state.tracks.findIndex((t: any) => t.id === b.trackId);

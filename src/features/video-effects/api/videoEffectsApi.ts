@@ -26,7 +26,7 @@ export class VideoEffectsApi {
    * Fetch the video effects manifest with all available effects
    */
   static async getVideoEffectsManifest(): Promise<any> {
-    const res = await fetch(`${BASE}/video-effects/v2/manifest`, {
+    const res = await fetch(`${BASE}/video-effects/manifest`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
@@ -42,7 +42,7 @@ export class VideoEffectsApi {
    * Fetch all renderer-based video effects
    */
   static async getRendererEffects(): Promise<EffectPreset[]> {
-    const res = await fetch(`${BASE}/video-effects/v2/effects`, {
+    const res = await fetch(`${BASE}/body-effects/video`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
@@ -58,7 +58,7 @@ export class VideoEffectsApi {
    * Fetch renderer-based effects by category
    */
   static async getRendererEffectsByCategory(category: string): Promise<EffectPreset[]> {
-    const res = await fetch(`${BASE}/video-effects/v2/effects/${category}`, {
+    const res = await fetch(`${BASE}/video-effects/${category}`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
@@ -74,7 +74,7 @@ export class VideoEffectsApi {
    * Fetch a specific renderer-based effect by ID
    */
   static async getRendererEffectById(id: string): Promise<EffectPreset> {
-    const res = await fetch(`${BASE}/video-effects/v2/effects/by-id/${id}`, {
+    const res = await fetch(`${BASE}/body-effects/${id}`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
@@ -119,7 +119,7 @@ export class VideoEffectsApi {
    * Search renderer-based effects
    */
   static async searchRendererEffects(query: string): Promise<EffectPreset[]> {
-    const res = await fetch(`${BASE}/video-effects/v2/search?q=${encodeURIComponent(query)}`, {
+    const res = await fetch(`${BASE}/video-effects/search?q=${encodeURIComponent(query)}`, {
       headers: getApiHeaders(),
     });
 
@@ -134,7 +134,7 @@ export class VideoEffectsApi {
    * Fetch all body effects
    */
   static async getBodyEffects(): Promise<EffectPreset[]> {
-    const res = await fetch(`${BASE}/effects/body`, {
+    const res = await fetch(`${BASE}/body-effects/body`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
@@ -150,7 +150,7 @@ export class VideoEffectsApi {
    * Fetch a specific effect by ID
    */
   static async getEffectById(id: string): Promise<EffectPreset> {
-    const res = await fetch(`${BASE}/effects/${id}`, {
+    const res = await fetch(`${BASE}/body-effects/${id}`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
