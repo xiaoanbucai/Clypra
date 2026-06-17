@@ -24,19 +24,19 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
 
   // Font
   const font = {
-    family: cfg.fontFamily || "Poppins",
-    weight: cfg.fontWeight || 700,
-    style: (cfg.fontStyle || "normal") as "normal" | "italic",
-    letterSpacing: cfg.letterSpacing || 0,
-    lineHeight: cfg.lineHeight || 1.2,
+    family: cfg.fontFamily ?? "Poppins",
+    weight: cfg.fontWeight ?? 700,
+    style: (cfg.fontStyle ?? "normal") as "normal" | "italic",
+    letterSpacing: cfg.letterSpacing ?? 0,
+    lineHeight: cfg.lineHeight ?? 1.2,
   };
 
   // Fills
   const fills = [];
   if (cfg.fillType !== "none") {
     fills.push({
-      type: cfg.fillType || "solid",
-      color: cfg.fillColor || "#FFFFFF",
+      type: cfg.fillType ?? "solid",
+      color: cfg.fillColor ?? "#FFFFFF",
       gradient: cfg.fillGradientStops
         ? {
             angle: cfg.fillGradientAngle ?? 90,
@@ -53,13 +53,13 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   const strokes = [];
   if (cfg.strokeEnabled) {
     strokes.push({
-      color: cfg.strokeColor || "#000000",
-      width: cfg.strokeWidth || 0,
-      position: cfg.strokePosition || "outside",
-      opacity: cfg.strokeOpacity || 100,
-      lineJoin: cfg.strokeLineJoin || "round",
-      blur: cfg.strokeBlur || 0,
-      type: cfg.strokeType || "single",
+      color: cfg.strokeColor ?? "#000000",
+      width: cfg.strokeWidth ?? 0,
+      position: cfg.strokePosition ?? "outside",
+      opacity: cfg.strokeOpacity ?? 100,
+      lineJoin: cfg.strokeLineJoin ?? "round",
+      blur: cfg.strokeBlur ?? 0,
+      type: cfg.strokeType ?? "single",
       colorSecondary: cfg.strokeColorSecondary,
       widthSecondary: cfg.strokeWidthSecondary,
       fadeRange: cfg.strokeFadeRange,
@@ -70,12 +70,12 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   const shadows = [];
   if (cfg.shadowEnabled) {
     shadows.push({
-      color: cfg.shadowColor || "#000000",
-      blur: cfg.shadowBlur || 0,
-      offsetX: cfg.shadowOffsetX || 0,
-      offsetY: cfg.shadowOffsetY || 0,
-      opacity: cfg.shadowOpacity || 80,
-      type: cfg.shadowType || "drop",
+      color: cfg.shadowColor ?? "#000000",
+      blur: cfg.shadowBlur ?? 0,
+      offsetX: cfg.shadowOffsetX ?? 0,
+      offsetY: cfg.shadowOffsetY ?? 0,
+      opacity: cfg.shadowOpacity ?? 80,
+      type: cfg.shadowType ?? "drop",
     });
   }
 
@@ -83,19 +83,19 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   let bevel = undefined;
   if (cfg.bevelEnabled) {
     bevel = {
-      depth: cfg.bevelDepth || 5,
-      highlightColor: cfg.bevelHighlight || "#FFFFFF",
-      shadowColor: cfg.bevelShadow || "#000000",
-      direction: cfg.bevelDirection || "bottom-right",
-      coreColor: cfg.bevelCoreColor || "#000000",
-      edgeColor: cfg.bevelEdgeColor || "#2A2A38",
-      edgeWidth: cfg.bevelEdgeWidth || 0,
-      blur: cfg.bevelBlur || 0,
-      blurColor: cfg.bevelBlurColor || "#000000",
-      perspectiveEnabled: cfg.bevelPerspectiveEnabled || false,
-      vanishingPointX: cfg.bevelVanishingPointX || 40,
-      vanishingPointY: cfg.bevelVanishingPointY || 80,
-      focalLength: cfg.bevelFocalLength || 400,
+      depth: cfg.bevelDepth ?? 5,
+      highlightColor: cfg.bevelHighlight ?? "#FFFFFF",
+      shadowColor: cfg.bevelShadow ?? "#000000",
+      direction: cfg.bevelDirection ?? "bottom-right",
+      coreColor: cfg.bevelCoreColor ?? "#000000",
+      edgeColor: cfg.bevelEdgeColor ?? "#2A2A38",
+      edgeWidth: cfg.bevelEdgeWidth ?? 0,
+      blur: cfg.bevelBlur ?? 0,
+      blurColor: cfg.bevelBlurColor ?? "#000000",
+      perspectiveEnabled: cfg.bevelPerspectiveEnabled ?? false,
+      vanishingPointX: cfg.bevelVanishingPointX ?? 40,
+      vanishingPointY: cfg.bevelVanishingPointY ?? 80,
+      focalLength: cfg.bevelFocalLength ?? 400,
     };
   }
 
@@ -118,15 +118,15 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   let panel = undefined;
   if (cfg.panelEnabled) {
     panel = {
-      color: cfg.panelColor || "#1E1E26",
-      opacity: cfg.panelOpacity || 80,
-      radius: cfg.panelRadius || 12,
-      paddingX: cfg.panelPaddingX || 40,
-      paddingY: cfg.panelPaddingY || 20,
+      color: cfg.panelColor ?? "#1E1E26",
+      opacity: cfg.panelOpacity ?? 80,
+      radius: cfg.panelRadius ?? 12,
+      paddingX: cfg.panelPaddingX ?? 40,
+      paddingY: cfg.panelPaddingY ?? 20,
       stroke: cfg.panelStrokeEnabled
         ? {
-            color: cfg.panelStrokeColor || "#2A2A38",
-            width: cfg.panelStrokeWidth || 2,
+            color: cfg.panelStrokeColor ?? "#2A2A38",
+            width: cfg.panelStrokeWidth ?? 2,
           }
         : undefined,
     };
@@ -136,10 +136,10 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   let stack = undefined;
   if (cfg.stackEnabled) {
     stack = {
-      count: cfg.stackCount || 3,
-      offsetX: cfg.stackOffsetX || 10,
-      offsetY: cfg.stackOffsetY || -10,
-      opacityDecay: cfg.stackOpacityDecay || 20,
+      count: cfg.stackCount ?? 3,
+      offsetX: cfg.stackOffsetX ?? 10,
+      offsetY: cfg.stackOffsetY ?? -10,
+      opacityDecay: cfg.stackOpacityDecay ?? 20,
       color1: cfg.stackColor1,
       color2: cfg.stackColor2,
       color3: cfg.stackColor3,
@@ -148,11 +148,12 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   }
 
   return {
+    ...cfg,
     id: preset.id,
     name: preset.name,
     category: preset.category,
-    description: "",
-    tags: [],
+    description: preset.description ?? cfg.description ?? "",
+    tags: preset.tags ?? cfg.tags ?? [],
     boundingBox: calculateBoundingBox(cfg),
     font,
     fills,
@@ -165,13 +166,28 @@ function convertConfigToDefinition(preset: any): EffectDefinitionWithBounds {
   };
 }
 
+/**
+ * Convert raw API config (flat structure) to EffectFullDefinition (nested structure)
+ * API returns: { fontFamily, fontWeight, strokeEnabled, strokeColor, ... }
+ * Engine expects: { font: {}, strokes: [], shadows: [], ... }
+ */
+function convertRawConfigToDefinition(rawConfig: any): EffectDefinitionWithBounds {
+  // If it already has nested structure, return as-is
+  if (rawConfig.font && Array.isArray(rawConfig.fills)) {
+    return rawConfig as EffectDefinitionWithBounds;
+  }
+
+  // Transform flat API structure to nested engine structure
+  return convertConfigToDefinition({ ...rawConfig, config: rawConfig });
+}
+
 function calculateBoundingBox(cfg: TextEffectConfig): BoundingBoxSpec {
   if (cfg.panelEnabled) {
     const strokeWidth = cfg.panelStrokeEnabled ? cfg.panelStrokeWidth || 0 : 0;
     return {
       mode: "panel",
-      paddingX: (cfg.panelPaddingX || 0) + strokeWidth,
-      paddingY: (cfg.panelPaddingY || 0) + strokeWidth,
+      paddingX: (cfg.panelPaddingX ?? 0) + strokeWidth,
+      paddingY: (cfg.panelPaddingY ?? 0) + strokeWidth,
     };
   }
 
@@ -179,34 +195,34 @@ function calculateBoundingBox(cfg: TextEffectConfig): BoundingBoxSpec {
   let paddingY = 0;
 
   if (cfg.strokeEnabled) {
-    paddingX = Math.max(paddingX, cfg.strokeWidth || 0);
-    paddingY = Math.max(paddingY, cfg.strokeWidth || 0);
-    paddingX += cfg.strokeBlur || 0;
-    paddingY += cfg.strokeBlur || 0;
+    paddingX = Math.max(paddingX, cfg.strokeWidth ?? 0);
+    paddingY = Math.max(paddingY, cfg.strokeWidth ?? 0);
+    paddingX += cfg.strokeBlur ?? 0;
+    paddingY += cfg.strokeBlur ?? 0;
   }
 
   if (cfg.shadowEnabled) {
-    paddingX = Math.max(paddingX, Math.abs(cfg.shadowOffsetX || 0) + (cfg.shadowBlur || 0));
-    paddingY = Math.max(paddingY, Math.abs(cfg.shadowOffsetY || 0) + (cfg.shadowBlur || 0));
+    paddingX = Math.max(paddingX, Math.abs(cfg.shadowOffsetX ?? 0) + (cfg.shadowBlur ?? 0));
+    paddingY = Math.max(paddingY, Math.abs(cfg.shadowOffsetY ?? 0) + (cfg.shadowBlur ?? 0));
   }
 
   cfg.glowLayers?.forEach((glow) => {
     if (!glow.enabled) return;
-    const glowPadding = (glow.blur || 0) + (glow.spread || 0);
+    const glowPadding = (glow.blur ?? 0) + (glow.spread ?? 0);
     paddingX = Math.max(paddingX, glowPadding);
     paddingY = Math.max(paddingY, glowPadding);
   });
 
   if (cfg.bevelEnabled) {
-    paddingX = Math.max(paddingX, cfg.bevelDepth || 0);
-    paddingY = Math.max(paddingY, cfg.bevelDepth || 0);
-    paddingX += cfg.bevelBlur || 0;
-    paddingY += cfg.bevelBlur || 0;
+    paddingX = Math.max(paddingX, cfg.bevelDepth ?? 0);
+    paddingY = Math.max(paddingY, cfg.bevelDepth ?? 0);
+    paddingX += cfg.bevelBlur ?? 0;
+    paddingY += cfg.bevelBlur ?? 0;
   }
 
   if (cfg.stackEnabled) {
-    paddingX = Math.max(paddingX, Math.abs((cfg.stackOffsetX || 0) * (cfg.stackCount || 1)));
-    paddingY = Math.max(paddingY, Math.abs((cfg.stackOffsetY || 0) * (cfg.stackCount || 1)));
+    paddingX = Math.max(paddingX, Math.abs((cfg.stackOffsetX ?? 0) * (cfg.stackCount ?? 1)));
+    paddingY = Math.max(paddingY, Math.abs((cfg.stackOffsetY ?? 0) * (cfg.stackCount ?? 1)));
   }
 
   return {
@@ -296,13 +312,21 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
   },
 
   getDefinitionById: async (id, category) => {
+    console.log(`[EffectsStore:Cache] 🔍 Looking for effect: ${id}`);
+
     // 1. Check memory cache (Zustand state)
     const cached = get().definitions[id];
-    if (cached) return cached;
+    if (cached) {
+      console.log(`[EffectsStore:Cache] ✅ CACHE HIT (Memory) - Effect "${id}" loaded from in-memory cache`);
+      return cached;
+    }
+
+    console.log(`[EffectsStore:Cache] ⚠️ Cache miss (Memory) - Effect "${id}" not in memory`);
 
     // 2. Check built-in presets (bundled)
     const localPreset = builtInPresets.find((p) => p.id === id);
     if (localPreset) {
+      console.log(`[EffectsStore:Cache] ✅ CACHE HIT (Built-in) - Effect "${id}" found in built-in presets`);
       const def = convertConfigToDefinition(localPreset);
       set((state) => ({
         definitions: { ...state.definitions, [id]: def },
@@ -310,10 +334,13 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       return def;
     }
 
+    console.log(`[EffectsStore:Cache] ⚠️ Cache miss (Built-in) - Effect "${id}" not in presets`);
+
     // 3. Check persistent cache (IndexedDB)
     const persistentCache = getTextEffectCache();
     const persistedDef = await persistentCache.get(id);
     if (persistedDef) {
+      console.log(`[EffectsStore:Cache] ✅ CACHE HIT (IndexedDB) - Effect "${id}" loaded from persistent storage`);
       // Populate memory cache
       set((state) => ({
         definitions: { ...state.definitions, [id]: persistedDef },
@@ -321,35 +348,55 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       return persistedDef;
     }
 
+    console.log(`[EffectsStore:Cache] ⚠️ Cache miss (IndexedDB) - Effect "${id}" not in persistent storage`);
+    console.log(`[EffectsStore:Cache] 🌐 Fetching from API: ${id} (category: ${category})`);
+
     // 4. Fetch from API (last resort)
+    // API returns raw TextEffectConfig format (flat structure)
     const catKey = category.toLowerCase();
+    const startTime = performance.now();
     const res = await fetch(`${API_BASE}/text-effects/${catKey}/${id}`, {
       cache: "reload",
       headers: getApiHeaders(),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as EffectFullDefinition;
+    const data = await res.json();
+    const fetchTime = (performance.now() - startTime).toFixed(2);
 
-    // Store in all cache layers
+    console.log(`[EffectsStore:Cache] 📥 Fetched raw data from API for "${id}":`, data);
+    const definition = convertRawConfigToDefinition(data);
+    console.log(`[EffectsStore:Cache] ⚙️ Converted definition for cache for "${id}":`, definition);
+
+    console.log(`[EffectsStore:Cache] ✅ API FETCH SUCCESS - Effect "${id}" downloaded in ${fetchTime}ms`);
+    console.log(`[EffectsStore:Cache] 💾 Caching effect "${id}" to memory + IndexedDB`);
+
+    // Store definition in all cache layers
     set((state) => ({
-      definitions: { ...state.definitions, [id]: data },
+      definitions: { ...state.definitions, [id]: definition },
     }));
-    await persistentCache.set(id, data); // Persist to disk
+    await persistentCache.set(id, definition); // Persist to disk
 
-    return data;
+    console.log(`[EffectsStore:Cache] ✅ CACHE SAVED - Effect "${id}" now available in all cache layers`);
+
+    return definition;
   },
 
   // ── selectEffect ─────────────────────────────────────────────
   // Called on card click
   // Shows spinner on card if definition not yet cached
   selectEffect: async (id, category) => {
+    console.log(`[EffectsStore:Select] 🎯 Selecting effect: ${id}`);
     const catKey = category.toLowerCase();
 
     // Show loading state on the clicked card
     set({ loadingId: id });
 
     try {
+      const startTime = performance.now();
       const data = await get().getDefinitionById(id, catKey);
+      const loadTime = (performance.now() - startTime).toFixed(2);
+
+      console.log(`[EffectsStore:Select] ✅ Effect loaded in ${loadTime}ms`);
 
       set({
         selectedEffect: data,
@@ -357,6 +404,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
         loadingId: null,
       });
     } catch (err) {
+      console.error(`[EffectsStore:Select] ❌ Failed to load effect ${id}:`, err);
       set({ loadingId: null });
     }
   },
@@ -365,16 +413,26 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
   // Called on 300ms hover hold — fire and forget, no loading state
   // Primes the cache so that selectEffect() is instant on click
   prefetchEffect: (id, category) => {
+    console.log(`[EffectsStore:Prefetch] 🔮 Prefetching effect: ${id}`);
     const catKey = category.toLowerCase();
     const state = get();
-    if (state.definitions[id]) return; // already cached
-    if (state.prefetchingIds.has(id)) return; // already in flight
+    if (state.definitions[id]) {
+      console.log(`[EffectsStore:Prefetch] ⏭️ Skipped - already cached: ${id}`);
+      return; // already cached
+    }
+    if (state.prefetchingIds.has(id)) {
+      console.log(`[EffectsStore:Prefetch] ⏭️ Skipped - already prefetching: ${id}`);
+      return; // already in flight
+    }
 
     set((s) => {
       const nextPrefetching = new Set(s.prefetchingIds);
       nextPrefetching.add(id);
       return { prefetchingIds: nextPrefetching };
     });
+
+    console.log(`[EffectsStore:Prefetch] 🌐 Starting background fetch: ${id}`);
+    const startTime = performance.now();
 
     fetch(`${API_BASE}/text-effects/${catKey}/${id}`, {
       cache: "reload",
@@ -384,17 +442,25 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((data: EffectFullDefinition) => {
+      .then((data) => {
+        const prefetchTime = (performance.now() - startTime).toFixed(2);
+        console.log(`[EffectsStore:Prefetch] ✅ Prefetch complete for ${id} in ${prefetchTime}ms`);
+        console.log(`[EffectsStore:Prefetch] 📥 Prefetched raw data from API for "${id}":`, data);
+
+        const definition = convertRawConfigToDefinition(data);
+        console.log(`[EffectsStore:Prefetch] ⚙️ Converted prefetch definition for "${id}":`, definition);
+
         set((s) => {
           const nextPrefetching = new Set(s.prefetchingIds);
           nextPrefetching.delete(id);
           return {
-            definitions: { ...s.definitions, [id]: data },
+            definitions: { ...s.definitions, [id]: definition },
             prefetchingIds: nextPrefetching,
           };
         });
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error(`[EffectsStore:Prefetch] ❌ Prefetch failed for ${id}:`, error);
         set((s) => {
           const nextPrefetching = new Set(s.prefetchingIds);
           nextPrefetching.delete(id);

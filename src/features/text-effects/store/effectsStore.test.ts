@@ -74,7 +74,7 @@ describe("useEffectsStore", () => {
     expect(state.indexLoading).toBe(false);
     expect(state.indexError).toBeNull();
     expect(state.index["metallic"]).toEqual(mockIndexItems);
-    expect(fetchMock).toHaveBeenCalledWith("https://clypra-worker-api.abdulkabirmusa.com/effects/metallic", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("https://clypra-worker-api.abdulkabirmusa.com/text-effects/metallic", expect.any(Object));
   });
 
   test("loadCategory - failure", async () => {
@@ -111,6 +111,103 @@ describe("useEffectsStore", () => {
     expect(state.definitions["solaris-ink"]).toEqual(mockFullDefinition);
     expect(state.selectedEffect).toEqual(mockFullDefinition);
     expect(state.selectedCategory).toBe("metallic");
+  });
+
+  test("selectEffect - converts flat API config without replacing explicit zero values", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const flatConfig = {
+      id: "zero-neon",
+      name: "Zero Neon",
+      category: "neon",
+      description: "Flat config with explicit zeros",
+      tags: ["strict"],
+      text: "NEON",
+      fontFamily: "Bebas Neue",
+      fontWeight: 700,
+      fontStyle: "normal",
+      fontSize: 100,
+      letterSpacing: 0,
+      lineHeight: 1.2,
+      fillType: "none",
+      fillColor: "#FFFFFF",
+      fillGradientAngle: 0,
+      fillGradientStops: [],
+      strokeEnabled: true,
+      strokeColor: "#FFFFFF",
+      strokeWidth: 0,
+      strokePosition: "outside",
+      strokeOpacity: 0,
+      strokeLineJoin: "round",
+      strokeBlur: 0,
+      glowLayers: [{ enabled: true, color: "#FF174D", blur: 60, opacity: 80, type: "outer", strength: 1, spread: 0 }],
+      shadowEnabled: true,
+      shadowColor: "#000000",
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      shadowOpacity: 0,
+      shadowType: "drop",
+      bevelEnabled: true,
+      bevelDepth: 0,
+      bevelHighlight: "#FFFFFF",
+      bevelShadow: "#000000",
+      bevelDirection: "bottom-right",
+      bevelEdgeWidth: 0,
+      bevelBlur: 0,
+      bevelVanishingPointX: 0,
+      bevelVanishingPointY: 0,
+      stackEnabled: true,
+      stackCount: 0,
+      stackOffsetX: 0,
+      stackOffsetY: 0,
+      stackOpacityDecay: 0,
+      panelEnabled: true,
+      panelColor: "#000000",
+      panelOpacity: 0,
+      panelRadius: 0,
+      panelPaddingX: 0,
+      panelPaddingY: 0,
+      panelStrokeEnabled: true,
+      panelStrokeColor: "#FFFFFF",
+      panelStrokeWidth: 0,
+      canvasWidth: 800,
+      canvasHeight: 200,
+      textPosX: "center",
+      textPosY: "middle",
+    };
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => flatConfig,
+    } as any);
+
+    await useEffectsStore.getState().selectEffect("zero-neon", "neon");
+
+    const def = useEffectsStore.getState().selectedEffect as any;
+    expect(def.font.letterSpacing).toBe(0);
+    expect(def.fontSize).toBe(100);
+    expect(def.canvasWidth).toBe(800);
+    expect(def.strokes[0].width).toBe(0);
+    expect(def.strokes[0].opacity).toBe(0);
+    expect(def.shadows[0].blur).toBe(0);
+    expect(def.shadows[0].offsetX).toBe(0);
+    expect(def.shadows[0].offsetY).toBe(0);
+    expect(def.shadows[0].opacity).toBe(0);
+    expect(def.bevel.depth).toBe(0);
+    expect(def.bevel.edgeWidth).toBe(0);
+    expect(def.bevel.blur).toBe(0);
+    expect(def.bevel.vanishingPointX).toBe(0);
+    expect(def.bevel.vanishingPointY).toBe(0);
+    expect(def.stack.count).toBe(0);
+    expect(def.stack.offsetX).toBe(0);
+    expect(def.stack.offsetY).toBe(0);
+    expect(def.stack.opacityDecay).toBe(0);
+    expect(def.panel.opacity).toBe(0);
+    expect(def.panel.radius).toBe(0);
+    expect(def.panel.paddingX).toBe(0);
+    expect(def.panel.paddingY).toBe(0);
+    expect(def.panel.stroke.width).toBe(0);
+    expect(def.boundingBox).toEqual({ mode: "panel", paddingX: 0, paddingY: 0 });
   });
 
   test("selectEffect - instant from cache", async () => {
@@ -212,7 +309,7 @@ describe("useEffectsStore", () => {
 
     expect(def).toEqual(mockFullDefinition);
     // When an item is in the loaded index, getDefinitionById is called which fetches from API
-    expect(fetchMock).toHaveBeenCalledWith("https://clypra-worker-api.abdulkabirmusa.com/effects/metallic/solaris-ink", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("https://clypra-worker-api.abdulkabirmusa.com/text-effects/metallic/solaris-ink", expect.any(Object));
   });
 
   test("fetchDefinitionOnlyById - falls back to category scanning if not in global index", async () => {

@@ -1213,6 +1213,7 @@ async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanva
     } as any;
   }
 
+  console.log("[Rasterizer:Text] 🎬 Rendering timeline text layer using config:", engineConfig);
   const sceneDoc = textEffectConfigToScene(engineConfig);
 
   // Acquire canvas context from the unified CanvasDevice pool

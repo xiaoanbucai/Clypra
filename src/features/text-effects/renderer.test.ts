@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, test, expect, vi } from "vitest";
 import { renderTextEffect, renderTextEffectToDataURL, renderTextEffectAsync } from "./renderer";
 import { TextEffectDefinition } from "./types/types";
+import { _buildConfig } from "@clypra/engine";
 const SolarisInkDefinition: TextEffectDefinition = {
   id: "solaris-ink",
   name: "Solaris Ink",
@@ -105,6 +106,29 @@ const glitchCorrupt: TextEffectDefinition = {
 };
 
 const mockEffects = [moltenGold3d, glitchCorrupt];
+
+describe("text effect config builder", () => {
+  test("uses runtime layout values instead of raw flat definition layout keys", () => {
+    const effect = {
+      ...NeonCrimsonDefinition,
+      fontSize: 100,
+      canvasWidth: 800,
+      canvasHeight: 200,
+      strokeWidth: 20,
+      customRenderer: "InkBrushEngine",
+      inkColor: "#FF174D",
+    } as TextEffectDefinition & Record<string, unknown>;
+
+    const config = _buildConfig(effect, "NEON", 75, 600, 200);
+
+    expect(config.fontSize).toBe(75);
+    expect(config.canvasWidth).toBe(600);
+    expect(config.canvasHeight).toBe(200);
+    expect(config.strokeWidth).toBe(1.5);
+    expect(config.customRenderer).toBe("InkBrushEngine");
+    expect(config.inkColor).toBe("#FF174D");
+  });
+});
 
 // Mock canvas rendering context 2D
 const mockCtx = {
