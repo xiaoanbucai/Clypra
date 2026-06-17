@@ -80,6 +80,8 @@ interface TransformOverlayProps {
   displayHeight: number;
   /** Current playhead time in seconds (program context) */
   currentTime: number;
+  /** Whether the overlay should be visible (use visibility instead of unmounting) */
+  visible?: boolean;
 }
 
 /**
@@ -98,7 +100,7 @@ function mouseToCanvas(clientX: number, clientY: number, overlayRect: DOMRect, v
   return screenToCanvas(localX, localY, viewport, { width: canvasWidth, height: canvasHeight }, scale, { x: 0, y: 0 });
 }
 
-export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth, canvasHeight, scale, viewport, displayOffset, displayWidth, displayHeight, currentTime }) => {
+export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth, canvasHeight, scale, viewport, displayOffset, displayWidth, displayHeight, currentTime, visible = true }) => {
   const { selectedClipIds, selectClip, toggleClipSelection } = useUIStore();
   const { clips, tracks, updateClip } = useTimelineStore();
   const { execute } = useHistoryStore();
@@ -479,6 +481,8 @@ export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth,
         style={{
           width: displayWidth,
           height: displayHeight,
+          visibility: visible ? "visible" : "hidden",
+          pointerEvents: visible ? "auto" : "none",
         }}
       >
         {/* Click capture layer - always active for selection/deselection */}
@@ -523,6 +527,8 @@ export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth,
       style={{
         width: displayWidth,
         height: displayHeight,
+        visibility: visible ? "visible" : "hidden",
+        pointerEvents: visible ? "auto" : "none",
       }}
     >
       {/* Click capture layer - always active for selection/deselection.

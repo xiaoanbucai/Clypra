@@ -665,8 +665,9 @@ export const ProgramPreview: React.FC = () => {
                 className="bg-black"
               />
 
-              {/* Transform overlay for selected clips - only show when paused */}
-              {!isPlaying && <TransformOverlay canvasWidth={canvasWidth} canvasHeight={canvasHeight} scale={scale} viewport={viewport} displayOffset={{ x: offsetX, y: offsetY }} displayWidth={displayWidth} displayHeight={displayHeight} currentTime={currentTime} />}
+              {/* Transform overlay for selected clips - always mounted but hidden during playback */}
+              {/* Using visibility instead of mount/unmount prevents DOM reconciliation artifacts */}
+              <TransformOverlay canvasWidth={canvasWidth} canvasHeight={canvasHeight} scale={scale} viewport={viewport} displayOffset={{ x: offsetX, y: offsetY }} displayWidth={displayWidth} displayHeight={displayHeight} currentTime={currentTime} visible={!isPlaying} />
 
               {/* Title & Action Safe Areas Overlay */}
               <SafeOverlay visible={showSafeOverlay} displayWidth={displayWidth} displayHeight={displayHeight} displayOffset={{ x: offsetX, y: offsetY }} />

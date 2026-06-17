@@ -137,6 +137,27 @@ export const EditorLayout: React.FC = () => {
         }
       }
 
+      // If styleId is present but effectDefinition is missing, fetch it before creating the clip
+      let effectDefinition = item.effectDefinition;
+      if (item.styleId && !effectDefinition) {
+        try {
+          const { useEffectsStore } = await import("@/features/text-effects/store/effectsStore");
+          const store = useEffectsStore.getState();
+
+          // Check if already in store cache
+          effectDefinition = store.definitions[item.styleId];
+
+          // If not in cache, fetch it
+          if (!effectDefinition) {
+            await store.fetchDefinitionOnlyById(item.styleId);
+            effectDefinition = useEffectsStore.getState().definitions[item.styleId];
+          }
+        } catch (error) {
+          console.warn("[EditorLayout] Failed to fetch effect definition for", item.styleId, error);
+          // Continue without definition - will use fallback sizing
+        }
+      }
+
       // Create text clip
       const textClip = createTextClip({
         trackId: targetTrackId,
@@ -157,7 +178,7 @@ export const EditorLayout: React.FC = () => {
         shadow: item.shadow,
         background: item.background,
         styleId: item.styleId,
-        effectDefinition: item.effectDefinition,
+        effectDefinition: effectDefinition, // ← Now properly fetched if missing
         templateId: item.templateId,
         customization: item.customization,
       });

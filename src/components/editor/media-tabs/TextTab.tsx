@@ -381,6 +381,7 @@ export const TextTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
             text: targetEffect.text || "CLYPRA", // Use default text from full definition
             presetType: "effect",
             styleId: targetEffect.id,
+            effectDefinition: targetEffect, // ← Pass the full effect definition for proper dimensions
             fontFamily: targetEffect.font?.family,
             color: targetEffect.fills?.[0]?.color,
             fontWeight: targetEffect.font?.weight,
@@ -435,6 +436,7 @@ export const TextTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
         text: text || "CLYPRA",
         presetType: "effect",
         styleId: effect.id,
+        effectDefinition: effect, // ← Pass the full effect definition
         fontFamily: effect.font?.family,
         color: effect.fills?.[0]?.color,
         fontWeight: effect.font?.weight,

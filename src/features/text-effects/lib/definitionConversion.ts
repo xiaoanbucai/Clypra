@@ -158,6 +158,34 @@ export function convertRawConfigToDefinition(rawConfig: any): EffectDefinitionWi
   return convertConfigToDefinition({ ...rawConfig, config: rawConfig });
 }
 
+/**
+ * Extract native canvas dimensions from an effect definition.
+ *
+ * Effect definitions from the Studio include native dimensions that define
+ * the canvas size and font size the effect was designed at. These dimensions
+ * are critical for proper scaling and aspect ratio preservation.
+ *
+ * @returns Native dimensions if present, null otherwise
+ */
+export function getNativeEffectDimensions(effectDef?: EffectDefinitionWithBounds): {
+  width: number;
+  height: number;
+  fontSize: number;
+} | null {
+  if (!effectDef) return null;
+
+  const def = effectDef as any;
+  const width = def.canvasWidth ?? def.width;
+  const height = def.canvasHeight ?? def.height;
+  const fontSize = def.fontSize;
+
+  if (!width || !height || !fontSize || width <= 0 || height <= 0 || fontSize <= 0) {
+    return null;
+  }
+
+  return { width, height, fontSize };
+}
+
 function calculateBoundingBox(cfg: TextEffectConfig): BoundingBoxSpec {
   if (cfg.panelEnabled) {
     const strokeWidth = cfg.panelStrokeEnabled ? cfg.panelStrokeWidth || 0 : 0;

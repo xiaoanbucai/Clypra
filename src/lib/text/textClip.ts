@@ -9,6 +9,7 @@ import type { TextEffectDefinition } from "@clypra/engine";
 import { generateId } from "../utils/id";
 import { useEffectsStore } from "../../features/text-effects/store/effectsStore";
 import { textRenderTrace } from "@/lib/debug/textRenderTrace";
+import { getNativeEffectDimensions } from "@/features/text-effects/lib/definitionConversion";
 
 export interface CreateTextClipOptions {
   /** Track ID to place the clip on */
@@ -136,12 +137,46 @@ export function effectBleed(options: { styleId?: string; effectDefinition?: Text
   return { x, y };
 }
 
+/**
+ * @deprecated Use getNativeEffectDimensions from definitionConversion instead.
+ * Kept for backward compatibility.
+ */
+function getNativeEffectBounds(effectDefinition?: TextEffectDefinition): { width: number; height: number; fontSize: number } | null {
+  return getNativeEffectDimensions(effectDefinition as any);
+}
+
 export function calculateTextClipSize(options: { text: string; fontFamily: string; fontSize: number; bold?: boolean; fontWeight?: string | number; styleId?: string; effectDefinition?: TextEffectDefinition; stroke?: { width: number }; shadow?: { blur: number; offsetX: number; offsetY: number }; background?: { padding: number }; canvasWidth: number }): { width: number; height: number; bleed: { x: number; y: number }; measuredWidth: number } {
   const isBold = options.bold || options.fontWeight === "bold" || (typeof options.fontWeight === "number" && options.fontWeight >= 700);
   const measuredWidth = measureTextWidth(options.text, options.fontFamily, options.fontSize, !!isBold);
   const bleed = effectBleed(options);
   const hasDeclaredBounds = !!options.effectDefinition?.boundingBox;
   const isPanelEffect = options.effectDefinition?.boundingBox?.mode === "panel";
+
+  // Try to get native dimensions for ALL effects (not just panels)
+  // This respects the Studio-authored dimensions for proper aspect ratio
+  const nativeBounds = getNativeEffectDimensions(options.effectDefinition as any);
+
+  if (nativeBounds) {
+    const scale = options.fontSize / nativeBounds.fontSize;
+    const baseWidth = nativeBounds.width * scale;
+    const baseHeight = nativeBounds.height * scale;
+
+    // CRITICAL: Scale bleed by the same ratio as the effect dimensions
+    // If the effect is scaled down from 120pt to 60pt (0.5x), the glow/shadow
+    // should also be scaled down proportionally
+    const scaledBleed = {
+      x: bleed.x * scale,
+      y: bleed.y * scale,
+    };
+
+    // Include scaled bleed padding in the clip dimensions
+    const width = Math.min(options.canvasWidth * 0.95, Math.max(120, baseWidth + scaledBleed.x * 2));
+    const height = baseHeight + scaledBleed.y * 2;
+
+    return { width, height, bleed: scaledBleed, measuredWidth };
+  }
+
+  // Fallback for effects without native dimensions
   const layoutBleed = isPanelEffect || !options.styleId ? bleed : { x: 0, y: 0 };
 
   const baseWidth = isPanelEffect ? measuredWidth : hasDeclaredBounds ? measuredWidth + options.fontSize * 0.4 : options.styleId ? measuredWidth * 1.3 : measuredWidth + options.fontSize * 0.8;
@@ -165,9 +200,11 @@ function resolveTextEffectDefinition(styleId?: string, effectDefinition?: TextEf
  * Create a text clip with sensible defaults.
  */
 export function createTextClip(options: CreateTextClipOptions): TextClip {
-  const defaultFontSize = options.styleId ? 96 : 100;
-  const { trackId, startTime, duration = 5.0, text = "Text", canvasWidth, canvasHeight, fontSize = defaultFontSize, color = "#ffffff", bold = false, italic = false, position = "center", textRole, words, styleId, templateId, customization, stroke, shadow, background, effectDefinition } = options;
+  const { trackId, startTime, duration = 5.0, text = "Text", canvasWidth, canvasHeight, color = "#ffffff", bold = false, italic = false, position = "center", textRole, words, styleId, templateId, customization, stroke, shadow, background, effectDefinition } = options;
   const resolvedEffectDefinition = resolveTextEffectDefinition(styleId, effectDefinition);
+  const definitionFontSize = (resolvedEffectDefinition as (TextEffectDefinition & { fontSize?: number }) | undefined)?.fontSize;
+  const defaultFontSize = definitionFontSize ?? (options.styleId ? 96 : 100);
+  const fontSize = options.fontSize ?? defaultFontSize;
   const fontFamily = options.fontFamily ?? resolvedEffectDefinition?.font?.family ?? "Inter, system-ui, sans-serif";
   const fontWeight = options.fontWeight ?? resolvedEffectDefinition?.font?.weight;
   const fontStyle = options.fontStyle ?? resolvedEffectDefinition?.font?.style;
