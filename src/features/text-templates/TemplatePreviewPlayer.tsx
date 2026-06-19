@@ -26,6 +26,7 @@ export interface TemplatePreviewPlayerProps {
   className?:   string;
   onFrameChange?: (currentFrame: number, totalFrames: number) => void;
   mode?:        "video" | "canvas" | "auto";
+  fitToContent?: boolean;
 }
 
 export const TemplatePreviewPlayer = forwardRef<TemplatePreviewPlayerHandle, TemplatePreviewPlayerProps>(
@@ -43,6 +44,7 @@ export const TemplatePreviewPlayer = forwardRef<TemplatePreviewPlayerHandle, Tem
     className,
     onFrameChange,
     mode      = "auto",
+    fitToContent = false,
   }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -125,14 +127,14 @@ export const TemplatePreviewPlayer = forwardRef<TemplatePreviewPlayerHandle, Tem
       if (!ctx) return;
 
       const renderer = new TemplateRenderer(template);
-      renderer.drawFrame(ctx, currentTime);
+      renderer.drawFrame(ctx, currentTime, fitToContent);
 
       // Fire frame updates
       const fps = template.fps || 30;
       const totalFrames = Math.round((template.duration || 4) * fps);
       const currentFrame = Math.round(currentTime * fps);
       onFrameChangeRef.current?.(currentFrame, totalFrames);
-    }, [resolvedMode, template, currentTime]);
+    }, [resolvedMode, template, currentTime, fitToContent]);
 
     const tick = (timestamp: number) => {
       if (previousTimeRef.current !== null && template) {
