@@ -50,6 +50,8 @@ export interface TextLayer {
   height: number;
   animation: LayerAnimation;
   role?: "primary" | "secondary" | "accent";
+  overflow?: "wrap" | "shrink" | "expand-panel" | "clip";
+  fontWeight: number;
 }
 
 export interface ShapeLayer {
