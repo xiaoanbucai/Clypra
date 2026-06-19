@@ -1063,10 +1063,32 @@ function pseudoRandom(seed: number): number {
 async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, layer: EvaluatedTextLayer, width: number, height: number, scaleX: number, scaleY: number): Promise<void> {
   if (layer.templateId) {
     const { useTemplateStore } = await import("@/features/text-templates/templateStore");
-    const templates = useTemplateStore.getState().templates;
-    const template = templates.find((t) => t.id === layer.templateId);
+    let templates = useTemplateStore.getState().templates;
+    if (templates.length === 0) {
+      try {
+        await useTemplateStore.getState().loadTemplates();
+        templates = useTemplateStore.getState().templates;
+      } catch (e) {
+        console.error("[Clypra:Rasterizer] Failed to load templates index:", e);
+      }
+    }
+    const rawTemplate = templates.find((t) => t.id === layer.templateId);
+    let template = rawTemplate?.lottieData;
 
-    if (template) {
+    if (rawTemplate && !template) {
+      try {
+        const { TextEffectsApi } = await import("@/features/text-effects/api/textEffectsApi");
+        const lottieData = await TextEffectsApi.getLottieTemplate(rawTemplate.category, rawTemplate.id);
+        useTemplateStore.setState((state) => ({
+          templates: state.templates.map((t) => t.id === rawTemplate.id ? { ...t, lottieData } : t)
+        }));
+        template = lottieData;
+      } catch (err) {
+        console.error(`[Clypra:Rasterizer] Failed to lazy-load Lottie data for template ${rawTemplate.id}:`, err);
+      }
+    }
+
+    if (template && template.layers) {
       const customization = layer.customization || {
         primaryText: layer.text || "",
         secondaryText: "",
