@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { TemplateDefinition } from "@/features/text-templates/types";
 import { Star, Download, Plus } from "lucide-react";
 import { TemplatePreviewPlayer, type TemplatePreviewPlayerHandle } from "@/features/text-templates";
@@ -40,6 +40,19 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
     setIsHovered(false);
   };
 
+  // Play/pause the video preview based on hover state
+  useEffect(() => {
+    if (lottieRef.current) {
+      if (isHovered) {
+        lottieRef.current.goToFrame(0);
+        lottieRef.current.play();
+      } else {
+        lottieRef.current.pause();
+        lottieRef.current.goToFrame(template.thumbnailFrame || 0);
+      }
+    }
+  }, [isHovered, template.thumbnailFrame]);
+
   return (
     <div
       onClick={onPreview}
@@ -69,28 +82,39 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
         <Star className={`w-3 h-3 ${isFavorite ? "fill-yellow-400 text-yellow-400!" : ""}`} />
       </button>
 
-      {/* Preview area — thumbnail image or live webm video player */}
+      {/* Preview area — thumbnail image and live webm video player (lazy-loaded) */}
       <div className="flex-1 flex items-center justify-center w-full select-none relative overflow-hidden transition-transform duration-500 ease-out group-hover:scale-[1.05]">
-        {isHovered ? (
-          <TemplatePreviewPlayer
-            ref={lottieRef}
-            lottieData={template}
-            autoplay={true}
-            loop={loop}
-            initialFrame={template.thumbnailFrame || 0}
-            className="w-full h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] select-none pointer-events-none"
-          />
-        ) : resolvedThumbnailUrl ? (
+        {/* WebM Video Player (lazy-loaded while thumbnail is shown) */}
+        <TemplatePreviewPlayer
+          ref={lottieRef}
+          lottieData={template}
+          autoplay={false}
+          loop={loop}
+          mode="video"
+          initialFrame={template.thumbnailFrame || 0}
+          className={`w-full h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] select-none pointer-events-none transition-opacity duration-300 absolute inset-0 m-auto ${
+            isHovered ? "opacity-100 z-10" : "opacity-0 z-0"
+          }`}
+        />
+
+        {/* Static Thumbnail */}
+        {resolvedThumbnailUrl ? (
           <img
             src={resolvedThumbnailUrl}
             alt={template.name}
-            className="max-w-full max-h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] select-none pointer-events-none"
+            className={`max-w-full max-h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)] select-none pointer-events-none transition-opacity duration-300 absolute inset-0 m-auto ${
+              isHovered ? "opacity-0 z-0" : "opacity-100 z-10"
+            }`}
             onError={(e) => {
               e.currentTarget.style.display = "none";
             }}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center gap-1 text-text-muted">
+          <div
+            className={`flex flex-col items-center justify-center gap-1 text-text-muted transition-opacity duration-300 absolute inset-0 m-auto ${
+              isHovered ? "opacity-0 z-0" : "opacity-100 z-10"
+            }`}
+          >
             <span className="text-2xl">📝</span>
             <span className="text-[9px] font-medium">{template.name}</span>
           </div>

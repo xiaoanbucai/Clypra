@@ -523,7 +523,7 @@ export const SourcePreview: React.FC = () => {
               lottieError ? (
                 <div className="text-red-400 text-xs">{lottieError}</div>
               ) : lottieData ? (
-                <TemplatePreviewPlayer ref={lottiePlayerRef} lottieData={lottieData} autoplay={isPlaying} loop={true} className="max-w-full max-h-full" />
+                <TemplatePreviewPlayer ref={lottiePlayerRef} lottieData={lottieData} autoplay={isPlaying} loop={true} mode="canvas" className="max-w-full max-h-full" />
               ) : (
                 <div className="text-text-muted text-xs flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
