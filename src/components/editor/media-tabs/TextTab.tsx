@@ -352,7 +352,7 @@ export const TextTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
     if (tab === "effects") {
       setActiveCategory("3D");
     } else if (tab === "templates") {
-      setActiveCategory("Title");
+      setActiveCategory("Lower Third");
     } else if (tab === "yours") {
       setActiveCategory("Favorites");
     } else {
