@@ -48,8 +48,11 @@ export interface TextLayer {
   y: number;
   width: number;
   height: number;
-  animation: LayerAnimation;
   role?: "primary" | "secondary" | "accent";
+  overflow?: "wrap" | "shrink" | "expand-panel" | "clip";
+  verticalAlign?: "top" | "middle" | "bottom";
+  fontWeight: number;
+  animation: LayerAnimation;
 }
 
 export interface ShapeLayer {
@@ -103,6 +106,9 @@ export interface TextTemplate {
   textLayers?: any[];
   defaultPlacement?: string;
   lottieFile?: string;
+  published?: boolean;
+  creatorName?: string;
+  creatorLink?: string;
 }
 
 // Map TemplateDefinition to TextTemplate for backwards compatibility

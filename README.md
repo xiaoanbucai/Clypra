@@ -138,8 +138,7 @@ Clypra uses the Clypra API for text effects and templates. To enable these featu
 The API key is used to authenticate requests to:
 
 - Text effects library
-- Text templates library
-- Lottie animations
+- Canvas-based text templates library (with WebM video preview support)
 
 ### Building from Source
 

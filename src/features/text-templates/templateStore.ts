@@ -103,7 +103,8 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     }
 
     // Initialize customisation with defaults from the selected template
-    const textLayers = (loadedTemplate.layers || []).filter((l) => l.kind === "text") as any[];
+    const fullTemplate = loadedTemplate.lottieData || loadedTemplate;
+    const textLayers = (fullTemplate.layers || []).filter((l: any) => l.kind === "text") as any[];
     const primary = textLayers.find((tl) => tl.role === "primary")?.content || "Clypra";
     const secondary = textLayers.find((tl) => tl.role === "secondary")?.content || "";
     const accent = textLayers.find((tl) => tl.role === "accent")?.content || "";

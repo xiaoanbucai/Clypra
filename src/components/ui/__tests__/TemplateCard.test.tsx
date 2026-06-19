@@ -4,6 +4,8 @@ import { TemplateCard } from "../TemplateCard";
 import { TextEffectsApi } from "@/features/text-effects/api/textEffectsApi";
 import type { TemplateDefinition } from "@/features/text-templates/types";
 
+declare const require: any;
+
 // Mock the TemplatePreviewPlayer component
 vi.mock("@/features/text-templates", () => {
   const React = require("react");
