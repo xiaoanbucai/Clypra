@@ -193,6 +193,8 @@ export interface Clip {
   stickerFormat?: "static" | "gif" | "lottie";
   stickerAnimationPath?: string;
   stickerSourceId?: string;
+  /** Text template ID for text clips */
+  templateId?: string;
 }
 
 /** Video overlay applied to a clip (actual video file) */

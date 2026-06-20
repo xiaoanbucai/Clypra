@@ -367,8 +367,8 @@ export const SourcePreview: React.FC = () => {
     if (mediaAsset.id.startsWith("sticker-")) {
       const stickerId = mediaAsset.id.replace("sticker-", "");
       const cachedSticker = useStickersStore.getState().getCachedSticker(stickerId);
-      if (cachedSticker && cachedSticker.format === "lottie" && cachedSticker.localImagePath) {
-        // Point timeline asset to the static fallback image
+      // Stickers are Lottie-only, use thumbnail for timeline
+      if (cachedSticker && cachedSticker.localImagePath) {
         const appCache = await import("@tauri-apps/api/path").then((m) => m.appCacheDir());
         const absoluteImagePath = await import("@tauri-apps/api/path").then((m) => m.join(appCache, cachedSticker.localImagePath!));
         mediaAsset = {

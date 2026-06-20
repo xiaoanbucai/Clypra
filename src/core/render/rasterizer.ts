@@ -415,7 +415,8 @@ async function rasterizeMediaLayer(ctx: CanvasRenderingContext2D | OffscreenCanv
         cachedSticker = useStickersStore.getState().getCachedSticker(stickerId);
       }
 
-      const stickerFormat = cachedSticker?.format ?? layer.stickerFormat;
+      // Stickers are Lottie-only
+      const stickerFormat = "lottie";
       const lottieSourcePath = cachedSticker?.localAnimationPath ?? layer.stickerAnimationPath;
 
       if (stickerFormat === "lottie" && lottieSourcePath) {
@@ -1112,7 +1113,7 @@ async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanva
       for (const tLayer of template.layers) {
         if (tLayer.kind === "text") {
           const changes: any = {};
-          
+
           // 1. Text content override or role-based default
           if (customization.layerTexts && customization.layerTexts[tLayer.id] !== undefined) {
             changes.content = customization.layerTexts[tLayer.id];
@@ -1146,7 +1147,7 @@ async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanva
           renderer.updateLayer(tLayer.id, changes);
         } else if (tLayer.kind === "shape") {
           const changes: any = {};
-          
+
           // Color override or role-based default
           if (customization.layerColors && customization.layerColors[tLayer.id] !== undefined) {
             changes.fill = customization.layerColors[tLayer.id];
@@ -1156,7 +1157,7 @@ async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanva
               changes.fill = colorOverride;
             }
           }
-          
+
           if (Object.keys(changes).length > 0) {
             renderer.updateLayer(tLayer.id, changes);
           }
@@ -1166,9 +1167,7 @@ async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanva
       const localTime = layer.time !== undefined && layer.clipStartTime !== undefined ? layer.time - layer.clipStartTime : 0;
 
       // Get the bounds of the actual template content to scale it relative to the content rather than the empty canvas
-      const tempCanvas = typeof OffscreenCanvas !== "undefined"
-        ? new OffscreenCanvas(template.canvasWidth, template.canvasHeight)
-        : document.createElement("canvas");
+      const tempCanvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(template.canvasWidth, template.canvasHeight) : document.createElement("canvas");
       tempCanvas.width = template.canvasWidth;
       tempCanvas.height = template.canvasHeight;
       const tempCtx = tempCanvas.getContext("2d");

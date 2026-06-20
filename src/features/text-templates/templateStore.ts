@@ -192,13 +192,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
     if (!clips?.length) return;
 
     // Filter clips that have templateId
-    const templateIds = Array.from(
-      new Set(
-        clips
-          .map((clip) => clip?.templateId)
-          .filter((id): id is string => typeof id === "string" && id.length > 0)
-      )
-    );
+    const templateIds = Array.from(new Set(clips.map((clip) => clip?.templateId).filter((id): id is string => typeof id === "string" && id.length > 0)));
 
     if (templateIds.length === 0) return;
 
@@ -211,7 +205,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
       }
 
       // 2. Fetch template data for each missing template
-      const fontDescriptors: { family: string; weight: number; style: string }[] = [];
+      const fontDescriptors: { family: string; weight: number; style: "normal" | "italic" }[] = [];
 
       await Promise.all(
         templateIds.map(async (id) => {
@@ -224,9 +218,7 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
               templateData = await TextEffectsApi.getTemplateData(rawTemplate.category, rawTemplate.id);
               // Cache in store
               set((state) => ({
-                templates: state.templates.map((t) =>
-                  t.id === id ? { ...t, templateData, lottieData: templateData } : t
-                ),
+                templates: state.templates.map((t) => (t.id === id ? { ...t, templateData, lottieData: templateData } : t)),
               }));
             } catch (err) {
               console.error(`[Clypra:TemplateStore] Preload failed for template ${id}:`, err);
@@ -241,12 +233,12 @@ export const useTemplateStore = create<TemplateState>((set, get) => ({
                 fontDescriptors.push({
                   family: layer.fontFamily,
                   weight: layer.fontWeight || 400,
-                  style: "normal",
+                  style: "normal" as const,
                 });
               }
             }
           }
-        })
+        }),
       );
 
       // 3. Preload all collected fonts

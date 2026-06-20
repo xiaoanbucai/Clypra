@@ -79,14 +79,7 @@ const FONT_WEIGHTS = [
   { value: 900, label: "Black" },
 ];
 
-const TEMPLATE_CATEGORIES = [
-  "lower-third",
-  "title-card",
-  "caption",
-  "callout",
-  "social",
-  "countdown"
-] as const;
+const TEMPLATE_CATEGORIES = ["lower-third", "title-card", "caption", "callout", "social", "countdown"] as const;
 
 interface TextStyleSectionProps {
   textClip: TextClip;
@@ -100,17 +93,7 @@ interface TextStyleSectionProps {
   deletePreset: (id: string) => void;
 }
 
-export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
-  textClip,
-  presets,
-  newPresetName,
-  setNewPresetName,
-  handleUpdate: originalHandleUpdate,
-  handleUpdateMultiple: originalHandleUpdateMultiple,
-  handleApplyPreset,
-  savePreset,
-  deletePreset
-}) => {
+export const TextStyleSection: React.FC<TextStyleSectionProps> = ({ textClip, presets, newPresetName, setNewPresetName, handleUpdate: originalHandleUpdate, handleUpdateMultiple: originalHandleUpdateMultiple, handleApplyPreset, savePreset, deletePreset }) => {
   const [applyToAll, setApplyToAll] = React.useState(false);
   const [effectSearchQuery, setEffectSearchQuery] = React.useState("");
   const [templateSearchQuery, setTemplateSearchQuery] = React.useState("");
@@ -119,9 +102,7 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
   const { templates } = useTemplateStore();
   const { definitions } = useEffectsStore();
   const templateDef = templates.find((t) => t.id === textClip.templateId);
-  const innerTemplate = templateDef
-    ? (templateDef.templateData || templateDef.lottieData || templateDef)
-    : null;
+  const innerTemplate = templateDef ? templateDef.templateData || templateDef.lottieData || templateDef : null;
 
   React.useEffect(() => {
     if (textClip.templateId && templateDef && !templateDef.templateData && !templateDef.lottieData) {
@@ -136,30 +117,15 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
   const mode = textClip.templateId ? "template" : textClip.styleId ? "effect" : "plain";
 
   // Styling properties to batch-update across all caption clips on the same track
-  const CAPTION_STYLE_KEYS = [
-    "fontFamily",
-    "fontSize",
-    "color",
-    "fontWeight",
-    "fontStyle",
-    "stroke",
-    "shadow",
-    "background",
-    "lineHeight",
-    "letterSpacing",
-    "align",
-    "valign",
-  ];
+  const CAPTION_STYLE_KEYS = ["fontFamily", "fontSize", "color", "fontWeight", "fontStyle", "stroke", "shadow", "background", "lineHeight", "letterSpacing", "align", "valign"];
 
   const handleUpdate = (key: string, value: any) => {
     if (applyToAll && textClip.textRole === "caption" && CAPTION_STYLE_KEYS.includes(key)) {
       const { clips } = useTimelineStore.getState();
-      const trackCaptions = clips.filter(
-        (c) => c.trackId === textClip.trackId && (c as any).textRole === "caption"
-      );
-      
+      const trackCaptions = clips.filter((c) => c.trackId === textClip.trackId && (c as any).textRole === "caption");
+
       originalHandleUpdate(key, value);
-      
+
       trackCaptions.forEach((c) => {
         if (c.id !== textClip.id) {
           useTimelineStore.getState().updateClip(c.id, { [key]: value });
@@ -171,15 +137,13 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
   };
 
   const handleUpdateMultiple = (fields: Record<string, any>) => {
-    const hasStyleField = Object.keys(fields).some(k => CAPTION_STYLE_KEYS.includes(k));
+    const hasStyleField = Object.keys(fields).some((k) => CAPTION_STYLE_KEYS.includes(k));
     if (applyToAll && textClip.textRole === "caption" && hasStyleField) {
       const { clips } = useTimelineStore.getState();
-      const trackCaptions = clips.filter(
-        (c) => c.trackId === textClip.trackId && (c as any).textRole === "caption"
-      );
-      
+      const trackCaptions = clips.filter((c) => c.trackId === textClip.trackId && (c as any).textRole === "caption");
+
       originalHandleUpdateMultiple(fields);
-      
+
       const styleFields: Record<string, any> = {};
       Object.entries(fields).forEach(([k, v]) => {
         if (CAPTION_STYLE_KEYS.includes(k)) {
@@ -206,7 +170,7 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
     layerColors: {},
     layerTexts: {},
     layerFontSizes: {},
-    layerFontWeights: {}
+    layerFontWeights: {},
   };
 
   const handleSwitchMode = (newMode: "plain" | "effect" | "template") => {
@@ -222,37 +186,27 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
     }
 
     if (newMode === "plain") {
-      const textContent = textClip.templateId 
-        ? (customization.layerTexts?.[innerTemplate?.layers?.find(l => l.kind === "text")?.id || ""] 
-           || customization.primaryText 
-           || textClip.text 
-           || "Text")
-        : textClip.text;
+      const textContent = textClip.templateId ? customization.layerTexts?.[innerTemplate?.layers?.find((l: any) => l.kind === "text")?.id || ""] || customization.primaryText || textClip.text || "Text" : textClip.text;
 
       handleUpdateMultiple({
         templateId: undefined,
         styleId: undefined,
         styleDefinition: undefined,
         customization: undefined,
-        text: textContent
+        text: textContent,
       });
     } else if (newMode === "effect") {
-      const textContent = textClip.templateId 
-        ? (customization.layerTexts?.[innerTemplate?.layers?.find(l => l.kind === "text")?.id || ""] 
-           || customization.primaryText 
-           || textClip.text 
-           || "Text")
-        : textClip.text;
+      const textContent = textClip.templateId ? customization.layerTexts?.[innerTemplate?.layers?.find((l: any) => l.kind === "text")?.id || ""] || customization.primaryText || textClip.text || "Text" : textClip.text;
 
       handleUpdateMultiple({
         templateId: undefined,
         customization: undefined,
-        text: textContent
+        text: textContent,
       });
     } else if (newMode === "template") {
       handleUpdateMultiple({
         styleId: undefined,
-        styleDefinition: undefined
+        styleDefinition: undefined,
       });
     }
   };
@@ -264,7 +218,7 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
   const handleDetachEffect = () => {
     handleUpdateMultiple({
       styleId: undefined,
-      styleDefinition: undefined
+      styleDefinition: undefined,
     });
   };
 
@@ -281,8 +235,8 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
         layerColors: {},
         layerTexts: {},
         layerFontSizes: {},
-        layerFontWeights: {}
-      }
+        layerFontWeights: {},
+      },
     });
   };
 
@@ -325,16 +279,12 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
 
   // Gradient helper states & functions
   const isGradient = (textClip.color || "").includes(",");
-  const gradientPresets = [
-    "#ffe066, #b38600",
-    "#ff3e00, #ff0077, #aa00ff",
-    "#ff007f, #aa00ff, #00c8ff, #00ff66"
-  ];
+  const gradientPresets = ["#ffe066, #b38600", "#ff3e00, #ff0077, #aa00ff", "#ff007f, #aa00ff, #00c8ff, #00ff66"];
   const isPresetGradient = gradientPresets.includes(textClip.color);
 
   const getStops = () => {
     if (!isGradient) return ["#ffffff", "#000000"];
-    return textClip.color.split(",").map(s => s.trim());
+    return textClip.color.split(",").map((s) => s.trim());
   };
 
   const handleStopChange = (index: number, newColor: string) => {
@@ -359,9 +309,7 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
 
   // Filtered lists for the preset grids
   const allCachedEffects = Object.values(definitions);
-  const filteredEffects = allCachedEffects.filter((effect) =>
-    effect.name.toLowerCase().includes(effectSearchQuery.toLowerCase())
-  );
+  const filteredEffects = allCachedEffects.filter((effect) => effect.name.toLowerCase().includes(effectSearchQuery.toLowerCase()));
 
   const filteredTemplates = templates.filter((t) => {
     const matchesCat = t.category === templateCategory;
@@ -380,13 +328,8 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
           {templateDef ? (
             <>
               <div className="flex items-center justify-between mb-1 select-none">
-                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block">
-                  Active Template: {templateDef.label || templateDef.name}
-                </span>
-                <button
-                  onClick={handleDetachTemplate}
-                  className="text-[9px] font-semibold text-red-400 hover:text-red-300 transition-colors"
-                >
+                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block">Active Template: {templateDef.label || templateDef.name}</span>
+                <button onClick={handleDetachTemplate} className="text-[9px] font-semibold text-red-400 hover:text-red-300 transition-colors">
                   Detach Template
                 </button>
               </div>
@@ -394,14 +337,12 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
                 template={innerTemplate!}
                 customization={customization}
                 onChange={(nextCust) => {
-                  const firstTextLayer = innerTemplate?.layers?.find(l => l.kind === "text");
-                  const primaryTextVal = nextCust.layerTexts?.[firstTextLayer?.id || ""] 
-                    || nextCust.primaryText 
-                    || textClip.text;
+                  const firstTextLayer = innerTemplate?.layers?.find((l: any) => l.kind === "text");
+                  const primaryTextVal = nextCust.layerTexts?.[firstTextLayer?.id || ""] || nextCust.primaryText || textClip.text;
 
                   handleUpdateMultiple({
                     customization: nextCust,
-                    text: primaryTextVal
+                    text: primaryTextVal,
                   });
                 }}
               />
@@ -428,32 +369,16 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
             isModified={false} // Will display detach tips if user changes style properties
           />
           <div>
-            <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1.5 select-none">
-              Text Content
-            </label>
-            <textarea
-              value={textClip.text || ""}
-              onChange={(e) => handleUpdate("text", e.target.value)}
-              rows={3}
-              placeholder="CLYPRA"
-              className="w-full bg-surface-raised border border-border/60 rounded-lg p-2.5 text-xs text-text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 resize-none selectable transition-colors"
-            />
+            <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1.5 select-none">Text Content</label>
+            <textarea value={textClip.text || ""} onChange={(e) => handleUpdate("text", e.target.value)} rows={3} placeholder="CLYPRA" className="w-full bg-surface-raised border border-border/60 rounded-lg p-2.5 text-xs text-text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 resize-none selectable transition-colors" />
           </div>
         </div>
       )}
 
       {mode === "plain" && (
         <div>
-          <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1.5 select-none">
-            Text Content
-          </label>
-          <textarea
-            value={textClip.text || ""}
-            onChange={(e) => handleUpdate("text", e.target.value)}
-            rows={3}
-            placeholder="CLYPRA"
-            className="w-full bg-surface-raised border border-border/60 rounded-lg p-2.5 text-xs text-text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 resize-none selectable transition-colors"
-          />
+          <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-1.5 select-none">Text Content</label>
+          <textarea value={textClip.text || ""} onChange={(e) => handleUpdate("text", e.target.value)} rows={3} placeholder="CLYPRA" className="w-full bg-surface-raised border border-border/60 rounded-lg p-2.5 text-xs text-text-primary outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 resize-none selectable transition-colors" />
         </div>
       )}
 
@@ -519,12 +444,8 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
       {mode !== "template" && (
         <PropertySection title="Typography" icon={<Type className="w-3.5 h-3.5" />}>
           <div className="space-y-3">
-            {mode === "effect" && (
-              <div className="p-2 bg-amber-500/10 border border-amber-500/25 rounded text-[10px] text-amber-400 select-none">
-                Note: Modifying typography will detach from the effect preset.
-              </div>
-            )}
-            
+            {mode === "effect" && <div className="p-2 bg-amber-500/10 border border-amber-500/25 rounded text-[10px] text-amber-400 select-none">Note: Modifying typography will detach from the effect preset.</div>}
+
             {/* Font Family */}
             <div>
               <label className="text-[10px] font-medium text-text-muted block mb-1 select-none">Font Family</label>
@@ -633,25 +554,15 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
       {mode !== "template" && (
         <PropertySection title="Colors & Effects" icon={<Palette className="w-3.5 h-3.5" />}>
           <div className="space-y-3.5">
-            {mode === "effect" && (
-              <div className="p-2 bg-amber-500/10 border border-amber-500/25 rounded text-[10px] text-amber-400 select-none">
-                Note: Changing colors will detach from the effect preset.
-              </div>
-            )}
-            
+            {mode === "effect" && <div className="p-2 bg-amber-500/10 border border-amber-500/25 rounded text-[10px] text-amber-400 select-none">Note: Changing colors will detach from the effect preset.</div>}
+
             {/* Text Color */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-medium text-text-primary select-none">Text Color</span>
                 <div className="flex items-center gap-2">
                   <select
-                    value={
-                      isPresetGradient 
-                        ? textClip.color 
-                        : isGradient 
-                          ? "custom_gradient" 
-                          : "solid"
-                    }
+                    value={isPresetGradient ? textClip.color : isGradient ? "custom_gradient" : "solid"}
                     onChange={(e) => {
                       if (e.target.value === "solid") {
                         handleCustomStyleUpdate("color", "#ffffff");
@@ -687,17 +598,9 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
                   <div className="flex flex-wrap gap-2.5">
                     {getStops().map((stopColor, idx) => (
                       <div key={idx} className="flex items-center gap-1">
-                        <input
-                          type="color"
-                          value={stopColor}
-                          onChange={(e) => handleStopChange(idx, e.target.value)}
-                          className="w-6 h-6 bg-transparent border-0 cursor-pointer rounded overflow-hidden"
-                        />
+                        <input type="color" value={stopColor} onChange={(e) => handleStopChange(idx, e.target.value)} className="w-6 h-6 bg-transparent border-0 cursor-pointer rounded overflow-hidden" />
                         {getStops().length > 2 && (
-                          <button
-                            onClick={() => handleRemoveStop(idx)}
-                            className="text-[10px] text-destructive hover:underline cursor-pointer font-bold px-1"
-                          >
+                          <button onClick={() => handleRemoveStop(idx)} className="text-[10px] text-destructive hover:underline cursor-pointer font-bold px-1">
                             &times;
                           </button>
                         )}
@@ -839,38 +742,32 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
       {mode !== "template" ? (
         <div id="quick-presets-section">
           <PropertySection title="Preset Effects" icon={<PaintBucket className="w-3.5 h-3.5" />} defaultCollapsed={mode === "plain"}>
-          <div className="space-y-3 select-none">
-            {/* Search filter */}
-            <input
-              type="text"
-              placeholder="Search effects..."
-              value={effectSearchQuery}
-              onChange={(e) => setEffectSearchQuery(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-1 px-2 text-xs text-white outline-none focus:border-violet-500"
-            />
-            
-            {filteredEffects.length === 0 ? (
-              <p className="text-[10px] text-text-muted text-center py-2">No matching presets found.</p>
-            ) : (
-              <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
-                {filteredEffects.map((effect) => (
-                  <button
-                    key={effect.id}
-                    onClick={() => applyEffectPreset(effect)}
-                    className={`p-2 rounded-lg border text-center truncate text-[10px] font-bold shadow-[0_2px_4px_rgba(0,0,0,0.15)] transition-all cursor-pointer max-w-full ${textClip.styleId === effect.id ? "bg-violet-600/20 text-violet-400 border-violet-500" : "bg-surface-raised border-border/60 hover:border-violet-500/50"}`}
-                    style={{
-                      fontFamily: effect.font.family,
-                      color: effect.fills?.[0]?.color ?? "#ffffff",
-                      textShadow: effect.shadows?.[0] ? `0 0 4px ${effect.shadows[0].color}` : effect.glows?.[0] ? `0 0 4px ${effect.glows[0].color}` : "none",
-                    }}
-                  >
-                    {effect.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </PropertySection>
+            <div className="space-y-3 select-none">
+              {/* Search filter */}
+              <input type="text" placeholder="Search effects..." value={effectSearchQuery} onChange={(e) => setEffectSearchQuery(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-1 px-2 text-xs text-white outline-none focus:border-violet-500" />
+
+              {filteredEffects.length === 0 ? (
+                <p className="text-[10px] text-text-muted text-center py-2">No matching presets found.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                  {filteredEffects.map((effect) => (
+                    <button
+                      key={effect.id}
+                      onClick={() => applyEffectPreset(effect)}
+                      className={`p-2 rounded-lg border text-center truncate text-[10px] font-bold shadow-[0_2px_4px_rgba(0,0,0,0.15)] transition-all cursor-pointer max-w-full ${textClip.styleId === effect.id ? "bg-violet-600/20 text-violet-400 border-violet-500" : "bg-surface-raised border-border/60 hover:border-violet-500/50"}`}
+                      style={{
+                        fontFamily: effect.font.family,
+                        color: effect.fills?.[0]?.color ?? "#ffffff",
+                        textShadow: effect.shadows?.[0] ? `0 0 4px ${effect.shadows[0].color}` : effect.glows?.[0] ? `0 0 4px ${effect.glows[0].color}` : "none",
+                      }}
+                    >
+                      {effect.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </PropertySection>
         </div>
       ) : (
         <PropertySection title="Template Gallery" icon={<PaintBucket className="w-3.5 h-3.5" />}>
@@ -878,28 +775,14 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
             {/* Category selection */}
             <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
               {TEMPLATE_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setTemplateCategory(cat)}
-                  className={`px-2 py-1 rounded text-[10px] capitalize font-medium transition-all shrink-0 ${
-                    templateCategory === cat
-                      ? "bg-amber-600/20 text-amber-400 border border-amber-500/30"
-                      : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
+                <button key={cat} onClick={() => setTemplateCategory(cat)} className={`px-2 py-1 rounded text-[10px] capitalize font-medium transition-all shrink-0 ${templateCategory === cat ? "bg-amber-600/20 text-amber-400 border border-amber-500/30" : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200"}`}>
                   {cat.replace("-", " ")}
                 </button>
               ))}
             </div>
 
             {/* Search filter */}
-            <input
-              type="text"
-              placeholder="Search templates..."
-              value={templateSearchQuery}
-              onChange={(e) => setTemplateSearchQuery(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-1 px-2 text-xs text-white outline-none focus:border-amber-500"
-            />
+            <input type="text" placeholder="Search templates..." value={templateSearchQuery} onChange={(e) => setTemplateSearchQuery(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-1 px-2 text-xs text-white outline-none focus:border-amber-500" />
 
             {filteredTemplates.length === 0 ? (
               <p className="text-[10px] text-text-muted text-center py-2">No matching templates found.</p>
@@ -908,25 +791,9 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
                 {filteredTemplates.map((tpl) => {
                   const isSelected = textClip.templateId === tpl.id;
                   return (
-                    <button
-                      key={tpl.id}
-                      onClick={() => handleApplyTemplate(tpl)}
-                      className={`p-1.5 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-between ${
-                        isSelected
-                          ? "bg-amber-500/10 border-amber-500 text-amber-400"
-                          : "bg-surface-raised border-border/60 hover:border-amber-500/50 hover:text-text-primary"
-                      }`}
-                    >
-                      <div className="w-full aspect-video rounded bg-zinc-950 flex items-center justify-center overflow-hidden mb-1 relative border border-border/30">
-                        {tpl.thumbnail ? (
-                          <img src={tpl.thumbnail} alt={tpl.label} className="w-full h-full object-cover" />
-                        ) : (
-                          <Layout className="w-4 h-4 text-zinc-600" />
-                        )}
-                      </div>
-                      <span className="block truncate text-[9px] w-full text-center leading-tight">
-                        {tpl.label || tpl.name}
-                      </span>
+                    <button key={tpl.id} onClick={() => handleApplyTemplate(tpl)} className={`p-1.5 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-between ${isSelected ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-surface-raised border-border/60 hover:border-amber-500/50 hover:text-text-primary"}`}>
+                      <div className="w-full aspect-video rounded bg-zinc-950 flex items-center justify-center overflow-hidden mb-1 relative border border-border/30">{tpl.thumbnail ? <img src={tpl.thumbnail} alt={tpl.label} className="w-full h-full object-cover" /> : <Layout className="w-4 h-4 text-zinc-600" />}</div>
+                      <span className="block truncate text-[9px] w-full text-center leading-tight">{tpl.label || tpl.name}</span>
                     </button>
                   );
                 })}
@@ -943,14 +810,7 @@ export const TextStyleSection: React.FC<TextStyleSectionProps> = ({
             <span className="text-xs font-semibold text-text-primary">Apply to all captions</span>
             <span className="text-[9px] text-text-muted">Broadcast styles to all clips on this track</span>
           </div>
-          <button
-            onClick={() => setApplyToAll(!applyToAll)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-              applyToAll
-                ? "bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25"
-                : "bg-surface-raised border border-border/60 text-text-muted hover:text-text-primary hover:bg-white/[0.04]"
-            }`}
-          >
+          <button onClick={() => setApplyToAll(!applyToAll)} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${applyToAll ? "bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25" : "bg-surface-raised border border-border/60 text-text-muted hover:text-text-primary hover:bg-white/[0.04]"}`}>
             {applyToAll ? "Active" : "Inactive"}
           </button>
         </div>

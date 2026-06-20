@@ -108,7 +108,9 @@ const App = () => {
         const { useTimelineStore } = await import("./store/timelineStore");
         const timelineState = useTimelineStore.getState();
 
+        // NOTE: swatch property has been removed from Clip type
         // Heal any legacy/bugged filter clips on the timeline that are missing their swatch
+        /*
         const filterClips = timelineState.clips.filter((c) => c.kind === "filter");
         if (filterClips.length > 0) {
           try {
@@ -135,6 +137,7 @@ const App = () => {
             console.warn("[App] Failed to heal timeline filters on project load:", err);
           }
         }
+        */
       }, 200);
     } catch (error) {
       console.error("[OpenProject] Failed to open project:", error);

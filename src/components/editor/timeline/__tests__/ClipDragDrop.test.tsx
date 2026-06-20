@@ -132,7 +132,9 @@ describe("Clip Drag and Drop Integration", () => {
       const clip2 = createMockClip({ id: "clip-2", trackId: "track-2" });
       const mediaAsset = createMockMediaAsset();
 
-      renderTrackWithClips(track, [clip1, clip2], [mediaAsset]);
+      // Only pass clips for this track (Timeline now filters before passing to Track)
+      const trackClips = [clip1, clip2].filter((c) => c.trackId === track.id);
+      renderTrackWithClips(track, trackClips, [mediaAsset]);
 
       expect(screen.getByTestId("clip-clip-1")).toBeInTheDocument();
       expect(screen.queryByTestId("clip-clip-2")).not.toBeInTheDocument();
