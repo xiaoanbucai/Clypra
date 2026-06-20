@@ -95,19 +95,19 @@ export const StickersTab: React.FC<TabProps> = ({ onAddToTimeline }) => {
       {/* Category Pills - Same as AudioTab */}
       <div className="flex gap-1 overflow-x-auto scrollbar-none border-b border-border p-1" style={{ scrollbarWidth: "none" }}>
         {STICKER_CATEGORIES.map((category) => (
-          <button key={category} onClick={() => setActiveCategory(category)} className={`shrink-0 cursor-pointer rounded px-2 py-1 text-[11px] font-semibold transition-colors ${activeCategory === category ? "bg-accent text-white" : "text-text-muted hover:bg-surface-raised hover:text-text-primary"}`}>
+          <button key={category} onClick={() => setActiveCategory(category)} className={`shrink-0 cursor-pointer rounded px-2 py-1 text-[11px] font-semibold transition-colors hover:bg-accent/10 hover:text-accent ${activeCategory === category ? "bg-accent/10 text-accent" : "text-text-muted"}`}>
             {formatCategoryName(category)}
           </button>
         ))}
       </div>
 
       {/* Search Bar - Same as AudioTab */}
-      <div className="p-1 border-b border-border">
+      {/* <div className="p-1 border-b border-border">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input type="text" placeholder="Search stickers..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-surface-raised border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent" />
         </div>
-      </div>
+      </div> */}
 
       {/* Content Area - Same pattern as AudioTab */}
       <div className="flex-1 overflow-y-auto scrollbar-thin p-1 space-y-2">

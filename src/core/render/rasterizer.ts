@@ -309,7 +309,7 @@ export async function rasterizeScene(scene: EvaluatedScene, target: RasterTarget
   // Apply track-level filter to the entire composition on CPU (unless skipped for GPU)
   if (scene.activeFilter && !target.skipFilters) {
     const { id, intensity } = scene.activeFilter;
-    const ir = resolveFilterToIR(id, intensity);
+    const ir = resolveFilterToIR(id, intensity, scene.activeFilter.swatch);
     const cssFilter = compileFilterIRToCSS(ir);
 
     if (cssFilter) {

@@ -140,9 +140,31 @@ class FilterCacheManager {
       const relativePath = `${CACHE_DIR}/${fileName}`;
       const fullPath = await join(appCache, relativePath);
 
-      // Since filters are just JSON, we don't fetch from a URL
-      // We save the filter object itself as JSON
-      const filterJson = JSON.stringify(filter, null, 2);
+      // If the swatch is missing and a url is present, fetch the detailed definition
+      let finalFilter = { ...filter };
+      if (!finalFilter.swatch && finalFilter.url) {
+        try {
+          console.log(`[FilterCache] Fetching detailed filter from: ${finalFilter.url}`);
+          const res = await fetch(finalFilter.url);
+          if (res.ok) {
+            const remoteFilter = await res.json();
+            finalFilter = {
+              ...finalFilter,
+              ...remoteFilter,
+              id: finalFilter.id, // Preserve listing attributes
+              name: finalFilter.name,
+              category: finalFilter.category,
+            };
+            console.log(`[FilterCache] Successfully retrieved details for ${finalFilter.name} with swatch: ${finalFilter.swatch}`);
+          } else {
+            console.warn(`[FilterCache] Failed to fetch filter details: ${res.statusText}`);
+          }
+        } catch (fetchErr) {
+          console.warn(`[FilterCache] Error fetching filter details from remote:`, fetchErr);
+        }
+      }
+
+      const filterJson = JSON.stringify(finalFilter, null, 2);
       const fileData = new TextEncoder().encode(filterJson);
 
       // Simulate progress for consistency
@@ -158,15 +180,15 @@ class FilterCacheManager {
       await writeFile(fullPath, fileData);
 
       const cachedFile: CachedFilter = {
-        id: filter.id,
+        id: finalFilter.id,
         localPath: relativePath,
-        filter,
+        filter: finalFilter,
         fileName,
         size: fileData.length,
         downloadedAt: Date.now(),
       };
 
-      this.cacheIndex.set(filter.id, cachedFile);
+      this.cacheIndex.set(finalFilter.id, cachedFile);
       await this.saveIndex();
 
       return cachedFile;
@@ -183,7 +205,13 @@ class FilterCacheManager {
     await this.initialize();
 
     if (this.isCached(filter.id)) {
-      return this.cacheIndex.get(filter.id)!;
+      const cached = this.cacheIndex.get(filter.id)!;
+      // If cached but swatch is missing (from previous bugged session), force re-download
+      if (cached.filter.swatch) {
+        return cached;
+      }
+      console.log(`[FilterCache] Cached filter ${filter.name} is missing swatch. Evicting and re-downloading.`);
+      this.cacheIndex.delete(filter.id);
     }
 
     return this.downloadFilter(filter, onProgress);

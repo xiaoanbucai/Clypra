@@ -177,15 +177,15 @@ export function EffectGrid({ searchQuery = "", onAddToTimeline }: EffectGridProp
     <div className="flex flex-col h-full bg-surface/5">
       {/* ── Category tabs ───────────────────────────────────── */}
       <div className="relative shrink-0 border-b border-border/40 bg-surface/5">
-        <div className="absolute left-0 top-0 bottom-0 w-3 bg-linear-to-l to-surface from-transparent pointer-events-none" />
-        <div className="flex overflow-x-auto gap-2 p-1 whitespace-nowrap" style={{ scrollbarWidth: "none" }}>
+        {/* <div className="absolute left-0 top-0 bottom-0 w-3 bg-linear-to-l to-surface from-transparent pointer-events-none" /> */}
+        <div className="flex overflow-x-auto gap-0.5 p-1 whitespace-nowrap" style={{ scrollbarWidth: "none" }}>
           {CATEGORIES.map((cat) => (
-            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-2 py-1 capitalize text-xs font-medium rounded-sm transition-colors cursor-pointer hover:bg-accent/10 hover:text-accent ${activeCategory === cat ? "bg-accent/10 text-accent" : "text-text-muted"}`}>
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-2 py-1 capitalize text-[11px] font-medium rounded transition-colors cursor-pointer hover:bg-accent/10 hover:text-accent ${activeCategory === cat ? "bg-accent/10 text-accent" : "text-text-muted"}`}>
               {cat}
             </button>
           ))}
         </div>
-        <div className="absolute right-0 top-0 bottom-0 w-3 bg-linear-to-l from-surface to-transparent pointer-events-none" />
+        {/* <div className="absolute right-0 top-0 bottom-0 w-3 bg-linear-to-l from-surface to-transparent pointer-events-none" /> */}
       </div>
 
       {/* ── Grid body ───────────────────────────────────────── */}

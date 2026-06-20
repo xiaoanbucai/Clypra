@@ -141,6 +141,7 @@ describe("Filter Evaluation", () => {
       id: "filter-sepia",
       name: "Sepia Tone",
       intensity: 0.8,
+      swatch: "",
     });
   });
 
@@ -228,6 +229,7 @@ describe("Filter Evaluation", () => {
       id: "filter-vivid",
       name: "Vivid",
       intensity: 1,
+      swatch: "",
     });
   });
 

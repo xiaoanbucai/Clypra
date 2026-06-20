@@ -14,10 +14,92 @@ export function normalizeFilterIntensity(intensity: number | undefined): number 
 }
 
 /**
- * Maps standard preset filter IDs and their intensity (0.0 to 1.0) to a FilterIR object.
+ * Parses a standard CSS filter string into a FilterIR object.
  */
-export function resolveFilterToIR(filterId: string, intensity: number): FilterIR {
+export function parseCSSFilterToIR(cssFilter: string): FilterIR {
+  const ir: FilterIR = {};
+  if (!cssFilter) return ir;
+
+  const parsePercentOrFloat = (valStr: string): number => {
+    valStr = valStr.trim();
+    if (valStr.endsWith("%")) {
+      return parseFloat(valStr) / 100;
+    }
+    return parseFloat(valStr);
+  };
+
+  const parseAngle = (valStr: string): number => {
+    valStr = valStr.trim();
+    if (valStr.endsWith("deg")) {
+      return parseFloat(valStr);
+    }
+    if (valStr.endsWith("rad")) {
+      return (parseFloat(valStr) * 180) / Math.PI;
+    }
+    if (valStr.endsWith("turn")) {
+      return parseFloat(valStr) * 360;
+    }
+    return parseFloat(valStr);
+  };
+
+  const sepiaMatch = cssFilter.match(/sepia\(([^)]+)\)/);
+  if (sepiaMatch) {
+    ir.sepia = parsePercentOrFloat(sepiaMatch[1]);
+  }
+
+  const grayscaleMatch = cssFilter.match(/grayscale\(([^)]+)\)/);
+  if (grayscaleMatch) {
+    ir.grayscale = parsePercentOrFloat(grayscaleMatch[1]);
+  }
+
+  const saturateMatch = cssFilter.match(/saturate\(([^)]+)\)/);
+  if (saturateMatch) {
+    ir.saturate = parsePercentOrFloat(saturateMatch[1]);
+  }
+
+  const contrastMatch = cssFilter.match(/contrast\(([^)]+)\)/);
+  if (contrastMatch) {
+    ir.contrast = parsePercentOrFloat(contrastMatch[1]);
+  }
+
+  const hueRotateMatch = cssFilter.match(/hue-rotate\(([^)]+)\)/);
+  if (hueRotateMatch) {
+    ir.hueRotate = parseAngle(hueRotateMatch[1]);
+  }
+
+  return ir;
+}
+
+/**
+ * Maps standard preset filter IDs or a custom swatch CSS string and their intensity (0.0 to 1.0) to a FilterIR object.
+ */
+export function resolveFilterToIR(filterId: string, intensity: number, swatch?: string): FilterIR {
   const amount = normalizeFilterIntensity(intensity);
+
+  // If a custom swatch is provided, parse it and scale it by intensity
+  if (swatch) {
+    const baseIR = parseCSSFilterToIR(swatch);
+    const scaledIR: FilterIR = {};
+    if (baseIR.sepia !== undefined) {
+      scaledIR.sepia = amount * baseIR.sepia;
+    }
+    if (baseIR.grayscale !== undefined) {
+      scaledIR.grayscale = amount * baseIR.grayscale;
+    }
+    if (baseIR.saturate !== undefined) {
+      // 1.0 is neutral
+      scaledIR.saturate = 1.0 + amount * (baseIR.saturate - 1.0);
+    }
+    if (baseIR.contrast !== undefined) {
+      // 1.0 is neutral
+      scaledIR.contrast = 1.0 + amount * (baseIR.contrast - 1.0);
+    }
+    if (baseIR.hueRotate !== undefined) {
+      scaledIR.hueRotate = amount * baseIR.hueRotate;
+    }
+    return scaledIR;
+  }
+
   return (() => {
     switch (filterId) {
       case "filter-sepia":

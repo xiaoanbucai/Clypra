@@ -476,7 +476,7 @@ export const ProgramPreview: React.FC = () => {
 
         const activeClip = activeFilterClips[0] as FilterClip | undefined;
         if (activeClip && activeClip.kind === "filter") {
-          return resolveFilterToIR(activeClip.mediaId, normalizeFilterIntensity(activeClip.intensity));
+          return resolveFilterToIR(activeClip.mediaId, normalizeFilterIntensity(activeClip.intensity), activeClip.swatch);
         }
         return undefined;
       };

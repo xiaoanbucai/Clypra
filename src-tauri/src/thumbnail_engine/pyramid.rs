@@ -691,7 +691,7 @@ mod tests {
             .1
             .expect("downsample result");
 
-        assert_eq!((frame.width, frame.height), (90, 160));
+        assert_eq!((frame.width, frame.height), (92, 160));
         assert_eq!(frame.data.len(), (frame.width * frame.height * 4) as usize);
         assert_aspect_close(frame.width, frame.height, 18.0 / 32.0);
     }

@@ -109,7 +109,7 @@ export function RendererEffectsBrowser({ onEffectSelect, onAddToTimeline, showAp
           renderer: effect.id,
           params: effect.defaultParams || {},
         },
-        "video-effects"
+        "video-effects",
       );
     }
 
@@ -137,12 +137,7 @@ export function RendererEffectsBrowser({ onEffectSelect, onAddToTimeline, showAp
   const filteredEffects = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return effects;
-    return effects.filter(
-      (effect) =>
-        effect.name.toLowerCase().includes(query) ||
-        (effect.description && effect.description.toLowerCase().includes(query)) ||
-        (effect.tags && effect.tags.some((tag) => tag.toLowerCase().includes(query)))
-    );
+    return effects.filter((effect) => effect.name.toLowerCase().includes(query) || (effect.description && effect.description.toLowerCase().includes(query)) || (effect.tags && effect.tags.some((tag) => tag.toLowerCase().includes(query))));
   }, [effects, searchQuery]);
 
   return (
@@ -157,12 +152,12 @@ export function RendererEffectsBrowser({ onEffectSelect, onAddToTimeline, showAp
       </div>
 
       {/* Search Bar */}
-      <div className="p-1 border-b border-border shrink-0">
+      {/* <div className="p-1 border-b border-border shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input type="text" placeholder="Search video effects..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-surface-raised border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent" />
         </div>
-      </div>
+      </div> */}
 
       {/* Effects Grid */}
       <div className="flex-1 overflow-y-auto p-1.5 scrollbar-thin">
@@ -218,17 +213,7 @@ interface EffectCardProps {
   showApplyButton: boolean;
 }
 
-function EffectCard({
-  effect,
-  previewUrl,
-  isFavorite,
-  isDownloaded,
-  isDownloading,
-  onFavorite,
-  onDownloadPreview,
-  onApply,
-  showApplyButton,
-}: EffectCardProps) {
+function EffectCard({ effect, previewUrl, isFavorite, isDownloaded, isDownloading, onFavorite, onDownloadPreview, onApply, showApplyButton }: EffectCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -244,11 +229,7 @@ function EffectCard({
   }, [isHovered, previewUrl]);
 
   return (
-    <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className="w-full aspect-square bg-surface-raised/40 hover:bg-surface-raised/80 border border-border/40 hover:border-accent/40 rounded-xl relative overflow-hidden flex flex-col justify-between p-1 transition-all duration-300 group cursor-pointer shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
-    >
+    <div onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)} className="w-full aspect-square bg-surface-raised/40 hover:bg-surface-raised/80 border border-border/40 hover:border-accent/40 rounded-xl relative overflow-hidden flex flex-col justify-between p-1 transition-all duration-300 group cursor-pointer shadow-[0_4px_16px_rgba(0,0,0,0.3)]">
       {/* Downloading Overlay */}
       {isDownloading && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-20 pointer-events-none">
@@ -260,31 +241,17 @@ function EffectCard({
       )}
 
       {/* Favorite Star (hover show or active) */}
-      <button
-        onClick={onFavorite}
-        className={`absolute top-1 right-1 p-1 cursor-pointer rounded-full bg-surface/40 hover:bg-surface/60 border border-border/50 text-text-muted hover:text-text-primary transition-all duration-200 z-10 ${
-          isFavorite ? "opacity-100 text-yellow-400!" : "opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-2"
-        }`}
-      >
+      <button onClick={onFavorite} className={`absolute top-1 right-1 p-1 cursor-pointer rounded-full bg-surface/40 hover:bg-surface/60 border border-border/50 text-text-muted hover:text-text-primary transition-all duration-200 z-10 ${isFavorite ? "opacity-100 text-yellow-400!" : "opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-2"}`}>
         <Star className={`w-3 h-3 ${isFavorite ? "fill-yellow-400 text-yellow-400!" : ""}`} />
       </button>
 
       {/* Preview Content: Video on hover, or Category Emoji */}
       <div className="flex-1 flex items-center justify-center w-full select-none relative overflow-hidden rounded-lg">
         {previewUrl ? (
-          <video
-            ref={videoRef}
-            src={previewUrl}
-            loop
-            muted
-            playsInline
-            className="w-full h-full object-cover rounded-lg"
-          />
+          <video ref={videoRef} src={previewUrl} loop muted playsInline className="w-full h-full object-cover rounded-lg" />
         ) : (
           <div className="flex flex-col items-center justify-center h-full w-full bg-linear-to-br from-accent/10 to-accent/0 text-center rounded-lg p-2">
-            <span className="text-4xl filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] group-hover:scale-[1.05] transition-transform duration-300">
-              {getCategoryIcon(effect.category)}
-            </span>
+            <span className="text-4xl filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] group-hover:scale-[1.05] transition-transform duration-300">{getCategoryIcon(effect.category)}</span>
           </div>
         )}
 
@@ -311,24 +278,8 @@ function EffectCard({
           {effect.name}
         </span>
         {showApplyButton && (
-          <button
-            onClick={onApply}
-            disabled={isDownloading}
-            className={`w-4 h-4 rounded-full flex items-center justify-center transition-all relative ${
-              isDownloaded
-                ? "bg-accent hover:bg-accent/85 border border-accent text-white cursor-pointer"
-                : isDownloading
-                ? "bg-accent/20 border border-accent cursor-wait"
-                : "bg-surface/40 hover:bg-surface/60 border border-border/50 text-text-muted hover:text-text-primary cursor-pointer"
-            }`}
-          >
-            {isDownloading ? (
-              <div className="w-2 h-2 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-            ) : isDownloaded ? (
-              <Plus className="w-3 h-3 group-hover:scale-110 transition-transform" />
-            ) : (
-              <Download className="w-2 h-2 group-hover:scale-115 transition-transform" />
-            )}
+          <button onClick={onApply} disabled={isDownloading} className={`w-4 h-4 rounded-full flex items-center justify-center transition-all relative ${isDownloaded ? "bg-accent hover:bg-accent/85 border border-accent text-white cursor-pointer" : isDownloading ? "bg-accent/20 border border-accent cursor-wait" : "bg-surface/40 hover:bg-surface/60 border border-border/50 text-text-muted hover:text-text-primary cursor-pointer"}`}>
+            {isDownloading ? <div className="w-2 h-2 rounded-full border-2 border-accent border-t-transparent animate-spin" /> : isDownloaded ? <Plus className="w-3 h-3 group-hover:scale-110 transition-transform" /> : <Download className="w-2 h-2 group-hover:scale-115 transition-transform" />}
           </button>
         )}
       </div>
@@ -353,4 +304,3 @@ function getCategoryIcon(category: string): string {
   };
   return icons[category.toLowerCase()] || icons[category] || "✨";
 }
-

@@ -107,6 +107,34 @@ const App = () => {
       setTimeout(async () => {
         const { useTimelineStore } = await import("./store/timelineStore");
         const timelineState = useTimelineStore.getState();
+
+        // Heal any legacy/bugged filter clips on the timeline that are missing their swatch
+        const filterClips = timelineState.clips.filter((c) => c.kind === "filter");
+        if (filterClips.length > 0) {
+          try {
+            const { filterCacheManager } = await import("./features/filters/cache/filterCache");
+            await filterCacheManager.initialize();
+
+            for (const clip of filterClips) {
+              if (!clip.swatch) {
+                const cached = filterCacheManager.getCached(clip.mediaId);
+                if (cached?.filter?.swatch) {
+                  console.log(`[App] Healing empty swatch for filter clip: ${clip.id}`);
+                  timelineState.updateClip(clip.id, { swatch: cached.filter.swatch });
+                } else {
+                  // Fallback: try loading or downloading the filter from disk/API
+                  const details = await filterCacheManager.loadCachedFilter(clip.mediaId);
+                  if (details?.swatch) {
+                    console.log(`[App] Healed swatch for filter clip from cache file: ${clip.id}`);
+                    timelineState.updateClip(clip.id, { swatch: details.swatch });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn("[App] Failed to heal timeline filters on project load:", err);
+          }
+        }
       }, 200);
     } catch (error) {
       console.error("[OpenProject] Failed to open project:", error);

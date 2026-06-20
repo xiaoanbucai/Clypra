@@ -11,6 +11,7 @@ export interface FilterAsset {
   description: string;
   thumbnail: string;
   swatch?: string;
+  url?: string;
 
   // LUT file
   lut?: string;

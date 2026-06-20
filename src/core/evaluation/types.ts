@@ -342,7 +342,7 @@ export interface EvaluatedScene {
   readonly metadata: SceneMetadata;
 
   /** Active track-level filter at this playhead time */
-  readonly activeFilter?: { id: string; name: string; intensity: number };
+  readonly activeFilter?: { id: string; name: string; intensity: number; swatch?: string };
 }
 
 /**

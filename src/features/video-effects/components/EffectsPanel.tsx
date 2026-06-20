@@ -34,11 +34,11 @@ export function EffectsPanel({ onAddToTimeline }: EffectsPanelProps) {
       {/* Top Header Control Navigation Row */}
       <div className="flex items-center gap-2 p-1 border-b border-border/50 shrink-0 bg-surface/10">
         <div className="grow overflow-x-auto flex items-center gap-2 pb-0.5 whitespace-nowrap" style={{ scrollbarWidth: "none" }}>
-          <button onClick={() => setActiveTab("video")} className={`px-2 py-0.5 rounded-sm text-xs font-semibold transition-all cursor-pointer ${activeTab === "video" ? "bg-accent text-white" : "text-text-muted hover:text-text-primary hover:bg-surface-raised/40"}`}>
-            Video Effects
+          <button onClick={() => setActiveTab("video")} className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${activeTab === "video" ? "bg-accent text-white" : "text-text-muted hover:text-text-primary hover:bg-surface-raised/40"}`}>
+            Video
           </button>
-          <button onClick={() => setActiveTab("body")} className={`px-2 py-0.5 rounded-sm text-xs font-semibold transition-all cursor-pointer ${activeTab === "body" ? "bg-accent text-white" : "text-text-muted hover:text-text-primary hover:bg-surface-raised/40"}`}>
-            Body Effects
+          <button onClick={() => setActiveTab("body")} className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${activeTab === "body" ? "bg-accent text-white" : "text-text-muted hover:text-text-primary hover:bg-surface-raised/40"}`}>
+            Body
           </button>
         </div>
       </div>

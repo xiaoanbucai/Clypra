@@ -1036,7 +1036,13 @@ export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth,
   }, []);
 
   // Convert clip bounds to screen coordinates for handle rendering
-  if (!selectedClip || !isClipActiveAtTime(selectedClip, currentTime)) {
+  const isTransformable = selectedClip && 
+    selectedClip.kind !== "filter" && 
+    selectedClip.kind !== "video-effect" && 
+    selectedClip.kind !== "body-effect" && 
+    selectedClip.kind !== "audio";
+
+  if (!selectedClip || !isClipActiveAtTime(selectedClip, currentTime) || !isTransformable) {
     return (
       <div
         ref={overlayRef}

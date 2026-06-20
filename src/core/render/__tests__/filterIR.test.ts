@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveFilterToIR, compileFilterIRToCSS, compileFilterIRToFFmpeg, normalizeFilterIntensity } from "../filterIR";
+import { resolveFilterToIR, compileFilterIRToCSS, compileFilterIRToFFmpeg, normalizeFilterIntensity, parseCSSFilterToIR } from "../filterIR";
 
 describe("Filter IR & Target Compilers", () => {
   describe("resolveFilterToIR", () => {
@@ -119,6 +119,38 @@ describe("Filter IR & Target Compilers", () => {
       };
       const ffmpeg = compileFilterIRToFFmpeg(ir);
       expect(ffmpeg).toBe("hue=h=5,hue=s=1.2,eq=contrast=1.1");
+    });
+  });
+
+  describe("parseCSSFilterToIR", () => {
+    it("parses individual filter functions correctly", () => {
+      const ir = parseCSSFilterToIR("contrast(1.2) sepia(0.3) saturate(140%) grayscale(50%) hue-rotate(45deg)");
+      expect(ir).toEqual({
+        contrast: 1.2,
+        sepia: 0.3,
+        saturate: 1.4,
+        grayscale: 0.5,
+        hueRotate: 45,
+      });
+    });
+
+    it("parses empty or empty-like filter strings gracefully", () => {
+      expect(parseCSSFilterToIR("")).toEqual({});
+      expect(parseCSSFilterToIR("none")).toEqual({});
+    });
+  });
+
+  describe("resolveFilterToIR with custom swatch", () => {
+    it("parses and scales custom swatch by intensity", () => {
+      const swatch = "contrast(1.2) sepia(0.3) saturate(1.4) grayscale(0.5) hue-rotate(40deg)";
+      const ir = resolveFilterToIR("custom-id", 0.5, swatch);
+      expect(ir).toEqual({
+        contrast: 1.1,     // 1.0 + 0.5 * (1.2 - 1.0) = 1.1
+        sepia: 0.15,       // 0.5 * 0.3 = 0.15
+        saturate: 1.2,     // 1.0 + 0.5 * (1.4 - 1.0) = 1.2
+        grayscale: 0.25,   // 0.5 * 0.5 = 0.25
+        hueRotate: 20,     // 0.5 * 40 = 20
+      });
     });
   });
 });
