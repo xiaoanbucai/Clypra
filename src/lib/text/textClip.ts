@@ -277,6 +277,88 @@ function resolveTextEffectDefinition(styleId?: string, effectDefinition?: TextEf
  */
 export function createTextClip(options: CreateTextClipOptions): TextClip {
   const { trackId, startTime, duration = 5.0, text = "Text", canvasWidth, canvasHeight, color = "#ffffff", bold = false, italic = false, position = "center", textRole, words, styleId, templateId, customization, stroke, shadow, background, effectDefinition } = options;
+
+  // For templates, calculate dimensions based on template's native aspect ratio
+  // instead of text measurements to ensure professional full-canvas rendering
+  let x: number, y: number, width: number, height: number, sizing: any;
+
+  if (templateId) {
+    // Template clips should fit canvas while maintaining their native aspect ratio
+    // Templates are designed at specific dimensions (e.g., 1920x1080)
+    // We need to scale them to fit the project canvas proportionally
+
+    // Default template aspect ratio (will be overridden if template data available)
+    const templateAspect = 16 / 9; // Most templates are 16:9
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    // Calculate dimensions to fit canvas while maintaining aspect ratio
+    if (canvasAspect > templateAspect) {
+      // Canvas is wider - fit to height
+      height = canvasHeight * 0.25; // 25% of canvas height for lower-third style
+      width = height * templateAspect;
+    } else {
+      // Canvas is taller - fit to width
+      width = canvasWidth * 0.5; // 50% of canvas width
+      height = width / templateAspect;
+    }
+
+    // Position based on preset
+    const templatePosition = calculateTextPosition(position, canvasWidth, canvasHeight, width, height);
+    x = templatePosition.x;
+    y = templatePosition.y;
+
+    // Create synthetic sizing for consistency
+    sizing = {
+      width,
+      height,
+      bleed: { x: 0, y: 0 },
+      measuredWidth: width,
+      bounds: {
+        contentWidth: width,
+        contentHeight: height,
+        bleedLeft: 0,
+        bleedRight: 0,
+        bleedTop: 0,
+        bleedBottom: 0,
+        measuredTextWidth: width,
+      },
+    };
+  } else {
+    // Regular text clips use text measurement
+    const resolvedEffectDefinition = resolveTextEffectDefinition(styleId, effectDefinition);
+    const definitionFontSize = (resolvedEffectDefinition as (TextEffectDefinition & { fontSize?: number }) | undefined)?.fontSize;
+    const defaultFontSize = definitionFontSize ?? (options.styleId ? 96 : 100);
+    const fontSize = options.fontSize ?? defaultFontSize;
+    const fontFamily = options.fontFamily ?? resolvedEffectDefinition?.font?.family ?? "Inter, system-ui, sans-serif";
+    const fontWeight = options.fontWeight ?? resolvedEffectDefinition?.font?.weight;
+    const fontStyle = options.fontStyle ?? resolvedEffectDefinition?.font?.style;
+    const lineHeight = options.lineHeight ?? resolvedEffectDefinition?.font?.lineHeight ?? 1.2;
+    const letterSpacing = options.letterSpacing ?? resolvedEffectDefinition?.font?.letterSpacing ?? 0;
+
+    sizing = calculateTextClipSize({
+      text,
+      fontFamily,
+      fontSize,
+      bold,
+      fontWeight,
+      letterSpacing,
+      lineHeight,
+      styleId,
+      effectDefinition: resolvedEffectDefinition,
+      stroke,
+      shadow,
+      background,
+      canvasWidth,
+    });
+
+    // Calculate position based on preset using the dynamic box sizes
+    const textPosition = calculateTextPosition(position, canvasWidth, canvasHeight, sizing.width, sizing.height);
+    x = textPosition.x;
+    y = textPosition.y;
+    width = textPosition.width;
+    height = textPosition.height;
+  }
+
   const resolvedEffectDefinition = resolveTextEffectDefinition(styleId, effectDefinition);
   const definitionFontSize = (resolvedEffectDefinition as (TextEffectDefinition & { fontSize?: number }) | undefined)?.fontSize;
   const defaultFontSize = definitionFontSize ?? (options.styleId ? 96 : 100);
@@ -286,25 +368,6 @@ export function createTextClip(options: CreateTextClipOptions): TextClip {
   const fontStyle = options.fontStyle ?? resolvedEffectDefinition?.font?.style;
   const lineHeight = options.lineHeight ?? resolvedEffectDefinition?.font?.lineHeight ?? 1.2;
   const letterSpacing = options.letterSpacing ?? resolvedEffectDefinition?.font?.letterSpacing ?? 0;
-
-  const sizing = calculateTextClipSize({
-    text,
-    fontFamily,
-    fontSize,
-    bold,
-    fontWeight,
-    letterSpacing,
-    lineHeight,
-    styleId,
-    effectDefinition: resolvedEffectDefinition,
-    stroke,
-    shadow,
-    background,
-    canvasWidth,
-  });
-
-  // Calculate position based on preset using the dynamic box sizes
-  const { x, y, width, height } = calculateTextPosition(position, canvasWidth, canvasHeight, sizing.width, sizing.height);
 
   const clip: TextClip = {
     id: generateId("text-clip"),

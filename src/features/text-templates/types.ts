@@ -95,6 +95,7 @@ export interface TextTemplate {
   
   // Optional and legacy properties for backwards compatibility
   lottieData?: any;
+  templateData?: any;
   thumbnailUrl?: string;
   thumbnailFrame?: number;
   durationFrames?: number;
@@ -120,6 +121,10 @@ export interface TemplateCustomization {
   accentText?: string;
   primaryColor?: string; // hex
   secondaryColor?: string;
+  layerColors?: Record<string, string>;
+  layerFontSizes?: Record<string, number>;
+  layerFontWeights?: Record<string, string | number>;
+  layerTexts?: Record<string, string>;
 }
 
 export interface RenderedFrameSequence {
