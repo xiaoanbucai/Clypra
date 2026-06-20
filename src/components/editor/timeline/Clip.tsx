@@ -217,7 +217,6 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
     document.body.style.userSelect = "none";
   };
 
-
   useEffect(() => {
     if (!RESIZE_TRACE) return;
     const onDocPointerDownCapture = (e: PointerEvent) => {
@@ -609,8 +608,8 @@ const ClipInner: React.FC<ClipProps> = ({ clip, mediaAsset, pixelsPerSecond, sel
       {clip.kind === "text" ? (
         <div className="relative flex h-full w-full items-center px-3">
           {/* Icon badge for text role differentiation */}
-          {(isCaption || isTitle) && <div className="absolute left-1 top-1 flex items-center justify-center rounded bg-black/30 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">{isCaption ? "CC" : "T"}</div>}
-          <div className="text-[12px] text-white/95 font-medium tracking-[0.01em] truncate max-w-full select-none pointer-events-none">{(clip as any).text || "Default text"}</div>
+          {(isCaption || isTitle) && <div className="absolute left-1 top-1/2 -translate-y-1/2 flex items-center justify-center rounded bg-black/30 px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-sm">{isCaption ? "CC" : "T"}</div>}
+          <div className="text-[12px] text-white/95 font-medium tracking-[0.01em] truncate max-w-full select-none pointer-events-none pl-4">{(clip as any).text || "Default text"}</div>
         </div>
       ) : isClipFilter ? (
         <div className="relative flex h-full w-full items-center px-2 select-none pointer-events-none gap-2">

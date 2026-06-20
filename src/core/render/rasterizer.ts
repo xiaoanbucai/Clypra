@@ -1133,6 +1133,9 @@ async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | OffscreenCanva
       const localTime = layer.time !== undefined && layer.clipStartTime !== undefined ? layer.time - layer.clipStartTime : 0;
 
       ctx.save();
+      // Translate from the center back to the top-left corner of the layer bounding box
+      ctx.translate(-width / 2, -height / 2);
+
       const sX = width / template.canvasWidth;
       const sY = height / template.canvasHeight;
       ctx.scale(sX, sY);
