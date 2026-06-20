@@ -149,9 +149,9 @@ export const useStickersStore = create<StickersStore>((set, get) => ({
   _setDownloadCompleted: (itemId: string, cachedSticker: CachedSticker) => {
     const { downloads } = get();
 
-    // Load Lottie JSON if available
+    // Load Lottie JSON (stickers are Lottie-only)
     let lottieData: any = null;
-    if (cachedSticker.format === "lottie" && cachedSticker.localAnimationPath) {
+    if (cachedSticker.localAnimationPath) {
       stickerCacheManager
         .readLottieJson(cachedSticker.localAnimationPath)
         .then((data) => {

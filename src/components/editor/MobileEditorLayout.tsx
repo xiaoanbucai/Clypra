@@ -220,17 +220,10 @@ export const MobileEditorLayout: React.FC = () => {
         const { appCacheDir, join } = await import("@tauri-apps/api/path");
         const appCache = await appCacheDir();
 
-        let relativePath = "";
-        if (cachedSticker.format === "lottie") {
-          relativePath = cachedSticker.localImagePath || "";
-        } else if (cachedSticker.format === "gif") {
-          relativePath = cachedSticker.localAnimationPath || "";
-        } else {
-          relativePath = cachedSticker.localImagePath || "";
-        }
-
+        // Stickers are Lottie-only now
+        const relativePath = cachedSticker.localImagePath || "";
         if (!relativePath) {
-          console.error("[MobileEditorLayout] Missing path for sticker:", item.id);
+          console.error("[MobileEditorLayout] Missing thumbnail path for sticker:", item.id);
           return;
         }
 
@@ -244,7 +237,7 @@ export const MobileEditorLayout: React.FC = () => {
           type: "image",
           duration: 3.0,
           size: 0,
-          stickerFormat: cachedSticker.format,
+          stickerFormat: "lottie",
           stickerAnimationPath: absoluteAnimationPath,
           stickerSourceId: item.id,
         };
