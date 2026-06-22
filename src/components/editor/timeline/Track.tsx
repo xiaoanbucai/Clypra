@@ -1,11 +1,12 @@
 import React, { useMemo } from "react";
-import { Lock, Shuffle } from "lucide-react";
+import { Lock } from "lucide-react";
 import { useDrop } from "react-dnd";
 import { useUIStore } from "@/store/uiStore";
 import { useTimelineStore } from "@/store/timelineStore";
 import { useTimeline } from "@/hooks/useTimeline";
 import { Clip } from "./Clip";
 import { GapIndicator } from "./GapIndicator";
+import { TransitionIndicator } from "./TransitionIndicator";
 import { handleDropOnTrack } from "@/lib/timeline/timelineUtils";
 import type { Clip as ClipType, Track as TrackType, DragItem } from "@/types";
 
@@ -33,10 +34,9 @@ const TrackInner: React.FC<TrackProps> = ({ track, pixelsPerSecond, clips, onCli
   const selectedClipIds = useUIStore((s) => s.selectedClipIds);
   const selectedGapId = useUIStore((s) => s.selectedGapId);
   const selectedTrackId = useUIStore((s) => s.selectedTrackId);
-  const selectedTransitionId = useUIStore((s) => s.selectedTransitionId);
-  const selectTransition = useUIStore((s) => s.selectTransition);
   const gaps = useTimelineStore((s) => s.gaps ?? []);
   const transitions = useTimelineStore((s) => s.transitions ?? []);
+  const allClips = useTimelineStore((s) => s.clips);
   const { getMediaAsset } = useTimeline();
 
   // Drop handler for media assets from MediaTab
@@ -206,27 +206,11 @@ const TrackInner: React.FC<TrackProps> = ({ track, pixelsPerSecond, clips, onCli
       {/* Transitions layer */}
       {track.visible &&
         trackTransitions.map((t) => {
-          const isSelected = selectedTransitionId === t.id;
-          const left = t.placement.startTime * pixelsPerSecond;
-          const width = t.placement.duration * pixelsPerSecond;
+          // Find the from and to clips for this transition
+          const fromClip = allClips.find((c) => c.id === t.fromItemId);
+          const toClip = allClips.find((c) => c.id === t.toItemId);
 
-          return (
-            <button
-              key={t.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                selectTransition(t.id);
-              }}
-              className={`absolute top-1/2 -translate-y-1/2 h-7 rounded z-35 flex items-center justify-center cursor-pointer transition-all border ${isSelected ? "bg-accent/80 text-white border-white shadow-md scale-105" : "bg-surface-raised/80 hover:bg-surface-raised border-border/40 text-text-muted hover:text-text-primary hover:border-accent/30"}`}
-              style={{
-                left: `${left}px`,
-                width: `${width}px`,
-              }}
-              title={`${t.type === "dissolve" ? "Dissolve" : "Fade"} Transition (${t.placement.duration.toFixed(1)}s)`}
-            >
-              <Shuffle className="w-3 h-3" />
-            </button>
-          );
+          return <TransitionIndicator key={t.id} transition={t} pixelsPerSecond={pixelsPerSecond} fromClip={fromClip} toClip={toClip} />;
         })}
 
       {/* Gaps layer - render permanent gaps */}
