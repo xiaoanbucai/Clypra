@@ -556,6 +556,9 @@ export const ProgramPreview: React.FC = () => {
           isRendering = false;
           if (!isActive) return;
           const latestState = renderStateRef.current;
+          if (latestState.clock.isSeeking) {
+            latestState.clock.completeSeek();
+          }
           if (result.data instanceof ImageBitmap) {
             if (gpuCache) {
               const cacheKey = `preview:${latestState.project?.id}:${latestState.epoch}:${timeToRender.toFixed(3)}:${profile.maxWidth}x${profile.maxHeight}:${latestState.dpr}`;
@@ -598,6 +601,10 @@ export const ProgramPreview: React.FC = () => {
         .catch((error: Error) => {
           isRendering = false;
           if (error.message !== "Job cancelled" && isActive) console.error("Failed to render frame:", error);
+          const latestState = renderStateRef.current;
+          if (latestState.clock.isSeeking) {
+            latestState.clock.completeSeek();
+          }
         });
     };
 

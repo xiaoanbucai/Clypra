@@ -449,6 +449,9 @@ export class PreviewMediaPool {
     const clampedTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, Math.min(sourceTime, video.duration - 0.001)) : sourceTime;
 
     if (!video.paused) {
+      if (video.seeking) {
+        return;
+      }
       // Professional policy:
       // - Audible stream: avoid frequent seeks (they cause audible glitches)
       // - Silent decode streams: keep tighter sync for visual fidelity
@@ -652,6 +655,9 @@ export class PreviewMediaPool {
     const clampedTime = Number.isFinite(audio.duration) && audio.duration > 0 ? Math.max(0, Math.min(sourceTime, audio.duration - 0.001)) : sourceTime;
 
     if (!audio.paused) {
+      if (audio.seeking) {
+        return;
+      }
       if (Math.abs(audio.currentTime - clampedTime) > 0.5) {
         audio.currentTime = clampedTime;
       }
