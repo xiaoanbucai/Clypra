@@ -22,6 +22,7 @@ export interface TransitionAsset {
   };
   tags?: string[];
   isPremium?: boolean;
+  published?: boolean;
 }
 
 export interface TransitionCategory {

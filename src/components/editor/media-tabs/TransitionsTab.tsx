@@ -14,10 +14,10 @@ import type { TransitionAsset } from "@/features/transitions/types";
 // Hardcoded transition categories for instant UI rendering
 const TRANSITION_CATEGORIES = [
   { id: "fade", label: "Fade" },
-  { id: "dissolve", label: "Dissolve" },
   { id: "slide", label: "Slide" },
   { id: "wipe", label: "Wipe" },
   { id: "zoom", label: "Zoom" },
+  { id: "dissolve", label: "Dissolve" },
   { id: "creative", label: "Creative" },
 ] as const;
 
