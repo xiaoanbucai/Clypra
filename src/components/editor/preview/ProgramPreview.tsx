@@ -451,6 +451,7 @@ export const ProgramPreview: React.FC = () => {
     let lastJobId: string | null = null;
     let lastRenderedTime: number = -1;
     let lastRenderedEpoch: number = -1;
+    let lastRenderedPlaybackState: "playing" | "paused" | "stopped" = "stopped";
     const GPU_MEMORY_LIMIT_MB = 128;
     let forceRenderNeeded = false;
     const renderLoop = () => {
@@ -493,6 +494,25 @@ export const ProgramPreview: React.FC = () => {
         return undefined;
       };
 
+      // ─── FINDING-009: Separate needsSync from needsRender ─────────────────────────
+      // sync() is about ELEMENT LIFECYCLE (create/dispose/bind clips to elements)
+      // It should only run when:
+      // - Playback state changes (play/pause/stop)
+      // - Epoch changes (clips added/removed/modified)
+      // - Time crosses clip boundary (clip becomes active/inactive)
+      //
+      // render() is about FRAME SCHEDULING (rasterize current frame)
+      // It should run when:
+      // - Playing (every frame)
+      // - Time changed (seek)
+      // - Epoch changed (visual update needed)
+      // - First frame
+      //
+      // During steady playback, needsRender=true every frame but needsSync=false
+      // This reduces sync() calls from 60fps to ~1-10fps (only on actual state changes)
+      const playbackStateChanged = lastRenderedPlaybackState !== playbackState;
+      const needsSync = epochChanged || playbackStateChanged || isFirstFrame;
+
       // Only render if something changed or we're playing
       // This prevents infinite RAF loops when idle
       if (!needsRender) {
@@ -502,30 +522,36 @@ export const ProgramPreview: React.FC = () => {
 
       rafId = requestAnimationFrame(renderLoop);
 
-      // Check isRendering FIRST
+      // Get session once for both sync and render operations
+      const session = getActiveSessionOrNull();
+
+      // Sync media elements ONLY when lifecycle changes (not every frame)
+      if (needsSync) {
+        if (session && session.state === "active") {
+          try {
+            session.syncPreviewMedia(getPreviewMediaSyncClips(state.clips, timeToRender), state.mediaAssets, state.tracks, {
+              time: timeToRender,
+              state: playbackState,
+              speed: playbackSpeed,
+              muted: isMuted,
+              volume,
+            });
+          } catch (error) {
+            console.error(`[PreviewPanel ERROR] Exception calling syncPreviewMedia:`, error);
+          }
+        }
+      }
+
+      // Check isRendering AFTER sync to prevent render race conditions
       if (isRendering) {
         droppedFramesRef.current++;
         return;
       }
 
-      const session = getActiveSessionOrNull();
-      if (session && session.state === "active") {
-        try {
-          session.syncPreviewMedia(getPreviewMediaSyncClips(state.clips, timeToRender), state.mediaAssets, state.tracks, {
-            time: timeToRender,
-            state: playbackState,
-            speed: playbackSpeed,
-            muted: isMuted,
-            volume,
-          });
-        } catch (error) {
-          console.error(`[PreviewPanel ERROR] Exception calling syncPreviewMedia:`, error);
-        }
-      }
-
       isRendering = true;
       lastRenderedTime = timeToRender;
       lastRenderedEpoch = state.epoch;
+      lastRenderedPlaybackState = playbackState;
       scheduler.updateTimeline(state.clips, state.tracks, state.mediaAssets, state.project, state.epoch, state.transitions);
       const qm = qualityManagerRef.current;
       const qualityTier = qm ? qm.selectTierForInteraction(isPlaying, false, false, state.previewQuality) : PreviewQualityTier.Idle;

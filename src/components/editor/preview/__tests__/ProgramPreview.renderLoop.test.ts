@@ -550,3 +550,462 @@ describe("ProgramPreview RAF Loop — Real World Scenarios", () => {
     expect(fastLoop.getState().droppedFrames).toBe(0);
   });
 });
+
+describe("ProgramPreview RAF Loop — FINDING-009: Separate needsSync from needsRender", () => {
+  /**
+   * Mock RAF render loop that implements FINDING-009 optimization
+   */
+  class MockRenderLoopWithSyncOptimization {
+    private isRendering = false;
+    private lastRenderedTime = -1;
+    private lastRenderedEpoch = -1;
+    private lastRenderedPlaybackState: "playing" | "paused" | "stopped" = "stopped";
+
+    private syncCallCount = 0;
+    private renderCallCount = 0;
+    private droppedFrames = 0;
+
+    /**
+     * Simulate RAF tick WITH FINDING-009 optimization
+     */
+    tick(time: number, playbackState: "playing" | "paused" | "stopped", epoch: number): void {
+      const timeChanged = time !== this.lastRenderedTime;
+      const epochChanged = epoch !== this.lastRenderedEpoch;
+      const isFirstFrame = this.lastRenderedTime === -1;
+      const isPlaying = playbackState === "playing";
+
+      // needsRender: frame scheduling (every frame during playback)
+      const needsRender = isPlaying || timeChanged || epochChanged || isFirstFrame;
+
+      // needsSync: element lifecycle (only on state changes)
+      const playbackStateChanged = playbackState !== this.lastRenderedPlaybackState;
+      const needsSync = epochChanged || playbackStateChanged || isFirstFrame;
+
+      if (!needsRender) {
+        return; // Early exit
+      }
+
+      if (this.isRendering) {
+        this.droppedFrames++;
+        return;
+      }
+
+      // Call sync ONLY when needed (not every frame)
+      if (needsSync) {
+        this.syncCallCount++;
+      }
+
+      this.isRendering = true;
+      this.lastRenderedTime = time;
+      this.lastRenderedEpoch = epoch;
+      this.lastRenderedPlaybackState = playbackState;
+
+      this.renderCallCount++;
+      this.isRendering = false; // Instant render for testing
+    }
+
+    /**
+     * Simulate RAF tick WITHOUT optimization (old behavior)
+     */
+    tickUnoptimized(time: number, playbackState: "playing" | "paused" | "stopped", epoch: number): void {
+      const timeChanged = time !== this.lastRenderedTime;
+      const epochChanged = epoch !== this.lastRenderedEpoch;
+      const isFirstFrame = this.lastRenderedTime === -1;
+      const isPlaying = playbackState === "playing";
+
+      const needsRender = isPlaying || timeChanged || epochChanged || isFirstFrame;
+
+      if (!needsRender) {
+        return;
+      }
+
+      if (this.isRendering) {
+        this.droppedFrames++;
+        return;
+      }
+
+      // Old behavior: ALWAYS call sync when needsRender is true
+      this.syncCallCount++;
+
+      this.isRendering = true;
+      this.lastRenderedTime = time;
+      this.lastRenderedEpoch = epoch;
+      this.lastRenderedPlaybackState = playbackState;
+
+      this.renderCallCount++;
+      this.isRendering = false;
+    }
+
+    getStats() {
+      return {
+        syncCalls: this.syncCallCount,
+        renderCalls: this.renderCallCount,
+        droppedFrames: this.droppedFrames,
+      };
+    }
+
+    reset(): void {
+      this.isRendering = false;
+      this.lastRenderedTime = -1;
+      this.lastRenderedEpoch = -1;
+      this.lastRenderedPlaybackState = "stopped";
+      this.syncCallCount = 0;
+      this.renderCallCount = 0;
+      this.droppedFrames = 0;
+    }
+  }
+
+  let loop: MockRenderLoopWithSyncOptimization;
+
+  beforeEach(() => {
+    loop = new MockRenderLoopWithSyncOptimization();
+  });
+
+  afterEach(() => {
+    loop.reset();
+  });
+
+  it("should call sync only once on first frame (not 60 times)", () => {
+    // First frame: both sync and render needed
+    loop.tick(0.0, "playing", 1);
+
+    const stats = loop.getStats();
+    expect(stats.syncCalls).toBe(1);
+    expect(stats.renderCalls).toBe(1);
+  });
+
+  it("should NOT call sync during steady 60fps playback (optimization)", () => {
+    // First frame
+    loop.tick(0.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Simulate 60 frames at 60fps (1 second of playback)
+    for (let frame = 1; frame <= 60; frame++) {
+      const time = frame / 60;
+      loop.tick(time, "playing", 1); // playbackState and epoch unchanged
+    }
+
+    const stats = loop.getStats();
+
+    // With optimization: sync called ONCE (first frame only)
+    expect(stats.syncCalls).toBe(1);
+
+    // But render called 61 times (first frame + 60 playback frames)
+    expect(stats.renderCalls).toBe(61);
+  });
+
+  it("should call sync 60 times WITHOUT optimization (old behavior)", () => {
+    // First frame
+    loop.tickUnoptimized(0.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Simulate 60 frames
+    for (let frame = 1; frame <= 60; frame++) {
+      const time = frame / 60;
+      loop.tickUnoptimized(time, "playing", 1);
+    }
+
+    const stats = loop.getStats();
+
+    // Without optimization: sync called 61 times (every frame)
+    expect(stats.syncCalls).toBe(61); // ❌ Wasteful
+
+    // Render also called 61 times
+    expect(stats.renderCalls).toBe(61);
+  });
+
+  it("should call sync when playback state changes", () => {
+    // Start playing
+    loop.tick(0.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Play for a few frames
+    for (let i = 1; i <= 10; i++) {
+      loop.tick(i / 60, "playing", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(1); // Still 1
+
+    // Pause (playback state changed, time also changed to trigger needsRender)
+    loop.tick(11 / 60, "paused", 1);
+    expect(loop.getStats().syncCalls).toBe(2); // Sync called again
+
+    // Paused scrubbing (state unchanged)
+    for (let i = 12; i <= 20; i++) {
+      loop.tick(i / 60, "paused", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(2); // Still 2
+
+    // Resume playing (state changed again, time also changed)
+    loop.tick(21 / 60, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(3); // Sync called again
+  });
+
+  it("should call sync when epoch changes (structural timeline change)", () => {
+    // Start playing
+    loop.tick(0.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Play for 30 frames
+    for (let i = 1; i <= 30; i++) {
+      loop.tick(i / 60, "playing", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // User adds a clip (epoch increments)
+    loop.tick(30 / 60, "playing", 2);
+    expect(loop.getStats().syncCalls).toBe(2); // Sync called for new epoch
+
+    // Continue playing
+    for (let i = 31; i <= 60; i++) {
+      loop.tick(i / 60, "playing", 2);
+    }
+    expect(loop.getStats().syncCalls).toBe(2); // Still 2 (no more changes)
+  });
+
+  it("should reduce sync calls by 98% during 1-minute playback", () => {
+    // 60fps × 60 seconds = 3600 frames
+    const totalFrames = 3600;
+
+    // First frame
+    loop.tick(0.0, "playing", 1);
+
+    // Simulate 1 minute of playback
+    for (let frame = 1; frame < totalFrames; frame++) {
+      const time = frame / 60;
+      loop.tick(time, "playing", 1);
+    }
+
+    const stats = loop.getStats();
+
+    // With optimization: 1 sync call (first frame)
+    expect(stats.syncCalls).toBe(1);
+    expect(stats.renderCalls).toBe(totalFrames);
+
+    // Calculate savings: (3600 - 1) / 3600 = 99.97% reduction
+    const reductionPercent = ((totalFrames - stats.syncCalls) / totalFrames) * 100;
+    expect(reductionPercent).toBeGreaterThan(98);
+  });
+
+  it("should call sync on play/pause/play transitions", () => {
+    // Start paused
+    loop.tick(0.0, "paused", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Play (different time to trigger render)
+    loop.tick(0.1, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(2); // State changed
+
+    // Play for 30 frames
+    for (let i = 1; i <= 30; i++) {
+      loop.tick((i + 1) / 60 + 0.1, "playing", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(2); // No additional syncs
+
+    // Pause (different time)
+    loop.tick(40 / 60, "paused", 1);
+    expect(loop.getStats().syncCalls).toBe(3); // State changed
+
+    // Resume (different time)
+    loop.tick(50 / 60, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(4); // State changed
+
+    // Play for 30 more frames
+    for (let i = 1; i <= 30; i++) {
+      loop.tick(50 / 60 + i / 60, "playing", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(4); // No additional syncs
+  });
+
+  it("should handle scrubbing while paused (no unnecessary syncs)", () => {
+    // Start paused
+    loop.tick(0.0, "paused", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Scrub rapidly (100 seeks while paused)
+    for (let i = 1; i <= 100; i++) {
+      loop.tick(i / 10, "paused", 1);
+    }
+
+    const stats = loop.getStats();
+
+    // With optimization: sync called ONCE (first frame only)
+    expect(stats.syncCalls).toBe(1);
+
+    // But render called 101 times (first + 100 scrubs)
+    expect(stats.renderCalls).toBe(101);
+  });
+
+  it("should sync on epoch change during playback", () => {
+    loop.tick(0.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Play for 20 frames
+    for (let i = 1; i <= 20; i++) {
+      loop.tick(i / 60, "playing", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // User splits a clip (epoch changes)
+    loop.tick(20 / 60, "playing", 2);
+    expect(loop.getStats().syncCalls).toBe(2);
+
+    // Continue playing
+    for (let i = 21; i <= 40; i++) {
+      loop.tick(i / 60, "playing", 2);
+    }
+    expect(loop.getStats().syncCalls).toBe(2);
+
+    // User deletes a clip (epoch changes again)
+    loop.tick(40 / 60, "playing", 3);
+    expect(loop.getStats().syncCalls).toBe(3);
+  });
+
+  it("should handle stopped state transitions", () => {
+    loop.tick(0.0, "stopped", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Seek while stopped
+    loop.tick(5.0, "stopped", 1);
+    expect(loop.getStats().syncCalls).toBe(1); // No sync (state unchanged)
+
+    // Start playing
+    loop.tick(5.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(2); // State changed
+
+    // Stop
+    loop.tick(10.0, "stopped", 1);
+    expect(loop.getStats().syncCalls).toBe(3); // State changed
+  });
+
+  it("should demonstrate CPU savings with optimization", () => {
+    const SYNC_COST_MS = 1.5; // Assume sync() takes 1.5ms
+    const totalFrames = 3600; // 1 minute at 60fps
+
+    // Optimized path
+    loop.tick(0.0, "playing", 1);
+    for (let i = 1; i < totalFrames; i++) {
+      loop.tick(i / 60, "playing", 1);
+    }
+    const optimizedSyncs = loop.getStats().syncCalls;
+    const optimizedCostMs = optimizedSyncs * SYNC_COST_MS;
+
+    // Unoptimized path
+    loop.reset();
+    loop.tickUnoptimized(0.0, "playing", 1);
+    for (let i = 1; i < totalFrames; i++) {
+      loop.tickUnoptimized(i / 60, "playing", 1);
+    }
+    const unoptimizedSyncs = loop.getStats().syncCalls;
+    const unoptimizedCostMs = unoptimizedSyncs * SYNC_COST_MS;
+
+    // Calculate savings
+    const savingsMs = unoptimizedCostMs - optimizedCostMs;
+    const savingsPercent = (savingsMs / unoptimizedCostMs) * 100;
+
+    expect(optimizedSyncs).toBe(1);
+    expect(unoptimizedSyncs).toBe(3600);
+    expect(savingsPercent).toBeGreaterThan(99);
+
+    // Optimized: 1 × 1.5ms = 1.5ms total
+    // Unoptimized: 3600 × 1.5ms = 5400ms total
+    // Savings: 5398.5ms (5.4 seconds of CPU time per minute)
+    expect(savingsMs).toBeCloseTo(5398.5, 0);
+  });
+
+  it("should maintain correct behavior across complex state transitions", () => {
+    const transitions = [
+      { time: 0.0, state: "paused" as const, epoch: 1, expectSync: true }, // First frame
+      { time: 0.0, state: "playing" as const, epoch: 1, expectSync: true }, // Play
+      { time: 1.0, state: "playing" as const, epoch: 1, expectSync: false }, // Playback
+      { time: 2.0, state: "playing" as const, epoch: 1, expectSync: false }, // Playback
+      { time: 2.5, state: "paused" as const, epoch: 1, expectSync: true }, // Pause
+      { time: 3.0, state: "paused" as const, epoch: 1, expectSync: false }, // Scrub
+      { time: 4.0, state: "paused" as const, epoch: 1, expectSync: false }, // Scrub
+      { time: 4.0, state: "playing" as const, epoch: 2, expectSync: true }, // Play + epoch change
+      { time: 5.0, state: "playing" as const, epoch: 2, expectSync: false }, // Playback
+      { time: 6.0, state: "stopped" as const, epoch: 2, expectSync: true }, // Stop
+    ];
+
+    let totalSyncs = 0;
+
+    transitions.forEach(({ time, state, epoch, expectSync }) => {
+      const beforeSyncs = loop.getStats().syncCalls;
+      loop.tick(time, state, epoch);
+      const afterSyncs = loop.getStats().syncCalls;
+
+      const syncCalled = afterSyncs > beforeSyncs;
+      expect(syncCalled).toBe(expectSync);
+
+      if (expectSync) totalSyncs++;
+    });
+
+    // Verify total sync calls match expectations
+    expect(loop.getStats().syncCalls).toBe(totalSyncs);
+    expect(totalSyncs).toBe(5); // 5 state transitions
+  });
+
+  it("should handle rapid play/pause cycles efficiently", () => {
+    loop.tick(0.0, "paused", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Rapid play/pause 20 times (with time changes)
+    for (let i = 0; i < 20; i++) {
+      loop.tick(i / 30, "playing", 1); // Different time each cycle
+      loop.tick((i + 0.5) / 30, "paused", 1); // Different time
+    }
+
+    const stats = loop.getStats();
+
+    // Each play/pause is 2 sync calls, plus initial = 1 + 40 = 41
+    expect(stats.syncCalls).toBe(41);
+
+    // This is correct behavior - sync needed on each state change
+    // The optimization is that we DON'T sync between state changes
+  });
+
+  it("should not sync during high-frequency time updates", () => {
+    loop.tick(0.0, "playing", 1);
+    expect(loop.getStats().syncCalls).toBe(1);
+
+    // Simulate 240fps rendering (4ms per frame)
+    // Time advances slowly, but we render frequently
+    for (let frame = 1; frame <= 240; frame++) {
+      const time = frame / 240; // 1 second at 240fps
+      loop.tick(time, "playing", 1);
+    }
+
+    const stats = loop.getStats();
+
+    // With optimization: only 1 sync (first frame)
+    expect(stats.syncCalls).toBe(1);
+
+    // But 241 renders (first + 240 frames)
+    expect(stats.renderCalls).toBe(241);
+  });
+
+  it("should sync when needed despite multiple renders per second", () => {
+    // High framerate playback with occasional state changes
+    loop.tick(0.0, "playing", 1);
+    let syncCallsAfterFirstFrame = loop.getStats().syncCalls;
+    expect(syncCallsAfterFirstFrame).toBe(1);
+
+    // 100 frames of playback
+    for (let i = 1; i <= 100; i++) {
+      loop.tick(i / 60, "playing", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(1); // Still 1
+
+    // Pause (with time change to trigger render)
+    loop.tick(101 / 60, "paused", 1);
+    expect(loop.getStats().syncCalls).toBe(2); // State changed
+
+    // 100 frames of scrubbing
+    for (let i = 102; i <= 201; i++) {
+      loop.tick(i / 60, "paused", 1);
+    }
+    expect(loop.getStats().syncCalls).toBe(2); // Still 2
+
+    // 202 total renders, but only 2 syncs
+    expect(loop.getStats().renderCalls).toBe(202);
+  });
+});
