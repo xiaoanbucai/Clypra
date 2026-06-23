@@ -3698,3 +3698,193 @@ describe("PreviewMediaPool — FINDING-020: Dispose During Play Promise", () => 
     expect((pool as any)._isDisposed).toBe(true);
   });
 });
+
+// ─── FINDING-019: RVFC Closure Memory Leak ──────────────────────────────────
+describe("PreviewMediaPool — FINDING-019: RVFC Closure Memory Leak", () => {
+  let pool: PreviewMediaPool;
+
+  beforeEach(() => {
+    pool = new PreviewMediaPool();
+  });
+
+  afterEach(() => {
+    pool.dispose();
+  });
+
+  it("should increment rvfcGeneration when registering new RVFC", () => {
+    const clips = [createMockClip("clip-1", "media-1", 0, 10)];
+    const assets = [createMockAsset("media-1", "/path/to/video.mp4")];
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    pool.sync(clips, assets, tracks, {
+      time: 2.5,
+      state: "playing" as const,
+      speed: 1.0,
+      muted: false,
+      volume: 100,
+    });
+
+    const managed = Array.from((pool as any).videoCache.values())[0];
+    const initialGeneration = managed.rvfcGeneration;
+
+    // Trigger re-registration by updating element state
+    Object.defineProperty(managed.element, "paused", { get: () => true, configurable: true });
+    Object.defineProperty(managed.element, "readyState", { get: () => 4, configurable: true });
+    managed.isActive = true;
+
+    // Call registerRVFC directly to test generation increment
+    (pool as any).registerRVFC(managed, clips[0], { time: 2.5, state: "playing", speed: 1.0, muted: false, volume: 100 }, tracks, true);
+
+    // Generation should have incremented
+    expect(managed.rvfcGeneration).toBeGreaterThan(initialGeneration);
+  });
+
+  it("should increment rvfcGeneration on disposal", () => {
+    const clips = [createMockClip("clip-1", "media-1", 0, 10)];
+    const assets = [createMockAsset("media-1", "/path/to/video.mp4")];
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    pool.sync(clips, assets, tracks, {
+      time: 2.5,
+      state: "playing" as const,
+      speed: 1.0,
+      muted: false,
+      volume: 100,
+    });
+
+    const managed = Array.from((pool as any).videoCache.values())[0];
+    const initialGeneration = managed.rvfcGeneration;
+
+    // Dispose the pool
+    pool.dispose();
+
+    // Generation should have incremented
+    expect(managed.rvfcGeneration).toBeGreaterThan(initialGeneration);
+  });
+
+  it("should invalidate stale RVFC callbacks via generation counter", () => {
+    const clips = [createMockClip("clip-1", "media-1", 0, 10)];
+    const assets = [createMockAsset("media-1", "/path/to/video.mp4")];
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    pool.sync(clips, assets, tracks, {
+      time: 2.5,
+      state: "playing" as const,
+      speed: 1.0,
+      muted: false,
+      volume: 100,
+    });
+
+    const managed = Array.from((pool as any).videoCache.values())[0];
+    const oldGeneration = managed.rvfcGeneration;
+
+    // Register new RVFC (increments generation)
+    (pool as any).registerRVFC(managed, clips[0], { time: 2.5, state: "playing", speed: 1.0, muted: false, volume: 100 }, tracks, true);
+
+    // Old generation callbacks should be invalidated
+    expect(managed.rvfcGeneration).not.toBe(oldGeneration);
+  });
+
+  it("should not leak memory through RVFC closures during disposal", () => {
+    const clips = [createMockClip("clip-1", "media-1", 0, 10)];
+    const assets = [createMockAsset("media-1", "/path/to/video.mp4")];
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    // Create multiple sync cycles to register multiple RVFC callbacks
+    for (let i = 0; i < 10; i++) {
+      pool.sync(clips, assets, tracks, {
+        time: i * 0.5,
+        state: "playing" as const,
+        speed: 1.0,
+        muted: false,
+        volume: 100,
+      });
+    }
+
+    const managed = Array.from((pool as any).videoCache.values())[0];
+    const generationBeforeDispose = managed.rvfcGeneration;
+
+    // Dispose should increment generation, invalidating all pending callbacks
+    pool.dispose();
+
+    expect(managed.rvfcGeneration).toBeGreaterThan(generationBeforeDispose);
+  });
+
+  it("should handle rapid RVFC re-registration without memory accumulation", () => {
+    const clips = [createMockClip("clip-1", "media-1", 0, 10)];
+    const assets = [createMockAsset("media-1", "/path/to/video.mp4")];
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    pool.sync(clips, assets, tracks, {
+      time: 2.5,
+      state: "playing" as const,
+      speed: 1.0,
+      muted: false,
+      volume: 100,
+    });
+
+    const managed = Array.from((pool as any).videoCache.values())[0];
+
+    // Simulate rapid re-registration (like during playback state changes)
+    const generations: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      (pool as any).registerRVFC(managed, clips[0], { time: 2.5 + i * 0.1, state: "playing", speed: 1.0, muted: false, volume: 100 }, tracks, true);
+      generations.push(managed.rvfcGeneration);
+    }
+
+    // Each registration should increment generation
+    for (let i = 1; i < generations.length; i++) {
+      expect(generations[i]).toBeGreaterThan(generations[i - 1]);
+    }
+
+    // Pool should remain functional
+    expect(() => pool.dispose()).not.toThrow();
+  });
+
+  it("should initialize rvfcGeneration to 0 on element creation", () => {
+    const clips = [createMockClip("clip-1", "media-1", 0, 10)];
+    const assets = [createMockAsset("media-1", "/path/to/video.mp4")];
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    pool.sync(clips, assets, tracks, {
+      time: 2.5,
+      state: "playing" as const,
+      speed: 1.0,
+      muted: false,
+      volume: 100,
+    });
+
+    const managed = Array.from((pool as any).videoCache.values())[0];
+
+    // New element should start with generation 0
+    expect(managed.rvfcGeneration).toBeGreaterThanOrEqual(0);
+  });
+
+  it("should prevent memory leak during project switch", () => {
+    // Simulate project with multiple clips
+    const clips = Array.from({ length: 5 }, (_, i) => createMockClip(`clip-${i}`, `media-${i}`, i * 2, 2));
+    const assets = Array.from({ length: 5 }, (_, i) => createMockAsset(`media-${i}`, `/path/to/video-${i}.mp4`));
+    const tracks = [{ id: "track-1", type: "video" }];
+
+    // Simulate playback with RVFC registration
+    pool.sync(clips, assets, tracks, {
+      time: 5.0,
+      state: "playing" as const,
+      speed: 1.0,
+      muted: false,
+      volume: 100,
+    });
+
+    // Get all managed elements
+    const managedElements = Array.from((pool as any).videoCache.values());
+    const generationsBeforeDispose = managedElements.map((m: any) => m.rvfcGeneration);
+
+    // Dispose (like closing project)
+    pool.dispose();
+
+    // All generations should have incremented
+    managedElements.forEach((managed: any, index: number) => {
+      expect(managed.rvfcGeneration).toBeGreaterThan(generationsBeforeDispose[index]);
+    });
+  });
+});

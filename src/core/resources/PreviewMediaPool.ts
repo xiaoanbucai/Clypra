@@ -72,6 +72,8 @@ interface ManagedVideo {
   isActive: boolean;
   /** Grace period - don't mark as orphaned if recently created */
   registrationGraceUntil: number;
+  /** FINDING-019: Generation counter to invalidate stale RVFC callbacks */
+  rvfcGeneration: number;
 }
 
 interface ManagedAudio {
@@ -702,6 +704,8 @@ export class PreviewMediaPool {
       // Grace period: don't mark as orphaned for 5 seconds after creation
       // This allows time for the clip to be seen by sync() and registered
       registrationGraceUntil: performance.now() + 5000,
+      // FINDING-019: Generation counter to invalidate stale RVFC callbacks
+      rvfcGeneration: 0,
       // ────────────────────────────────────────────────────────────────────
     };
 
@@ -784,6 +788,10 @@ export class PreviewMediaPool {
     if (managed.playPromiseInFlight) {
       managed.playCancelRequested = true;
     }
+
+    // FINDING-019: Increment generation to invalidate pending RVFC callbacks
+    // This prevents memory leaks from closures
+    managed.rvfcGeneration++;
 
     if (managed.rvfcHandle !== null && this.hasRVFC) {
       try {
@@ -1157,16 +1165,38 @@ export class PreviewMediaPool {
   private registerRVFC(managed: ManagedVideo, clip: Clip, syncState: PreviewSyncState, tracks: Array<{ id: string; type: string }>, isPrimaryAudibleVideo: boolean): void {
     const video = managed.element;
 
+    // FINDING-019: Increment generation to invalidate any pending callbacks
+    // This prevents memory leaks from closures capturing large objects
+    managed.rvfcGeneration++;
+    const generation = managed.rvfcGeneration;
+
+    // Capture only minimal data needed for callback
+    const mediaId = managed.mediaId;
+    const sourcePath = managed.sourcePath;
+    const clipStartTime = clip.startTime;
+    const clipDuration = clip.duration;
+    const trimIn = clip.trimIn || 0;
+
     const callback = (_now: number, metadata: VideoFrameCallbackMetadata) => {
+      // FINDING-019: Check generation first - exits immediately if stale
+      if (managed.rvfcGeneration !== generation) return;
+
       if (this._isDisposed) return;
 
       // Check if element still exists in cache (by cache key)
-      const cacheKey = `${managed.mediaId}-${managed.sourcePath}`;
+      const cacheKey = `${mediaId}-${sourcePath}`;
       if (!this.videoCache.has(cacheKey)) return;
 
       // Recalculate expected source time based on latest clock state
       const latestSyncState = this.lastSyncState ?? syncState;
-      const currentSourceTime = getClipSourceTime(clip, latestSyncState.time);
+
+      // Reconstruct clip time calculation without capturing entire clip object
+      const timelineTime = latestSyncState.time;
+      let currentSourceTime: number | null = null;
+      if (timelineTime >= clipStartTime && timelineTime < clipStartTime + clipDuration) {
+        currentSourceTime = trimIn + (timelineTime - clipStartTime);
+      }
+
       if (currentSourceTime === null) return;
 
       const clampedExpected = Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, Math.min(currentSourceTime, video.duration - 0.001)) : currentSourceTime;
@@ -1209,8 +1239,8 @@ export class PreviewMediaPool {
         video.playbackRate = latestSyncState.speed;
       }
 
-      // Re-register for next frame
-      if (!video.paused && !this._isDisposed) {
+      // Re-register for next frame (only if generation still matches)
+      if (!video.paused && !this._isDisposed && managed.rvfcGeneration === generation) {
         try {
           managed.rvfcHandle = video.requestVideoFrameCallback(callback);
         } catch {
