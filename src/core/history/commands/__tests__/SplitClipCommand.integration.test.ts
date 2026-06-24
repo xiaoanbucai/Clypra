@@ -59,7 +59,18 @@ describe("SplitClipCommand Integration Tests", () => {
 
     it("should allow independent effect changes after split", () => {
       const clip = createTestClip({
-        effects: [{ id: "effect-1", type: "blur", enabled: true, intensity: 0.5 }],
+        effects: [
+          {
+            id: "effect-1",
+            effectId: "preset-1",
+            type: "effect",
+            renderer: "blur",
+            params: {},
+            startTime: 0,
+            duration: 5,
+            intensity: 0.5,
+          },
+        ],
       });
 
       const command = new SplitClipCommand("original-clip", 5.0, 30, clip);
@@ -80,7 +91,24 @@ describe("SplitClipCommand Integration Tests", () => {
 
     it("should allow independent overlay changes after split", () => {
       const clip = createTestClip({
-        overlays: [{ id: "overlay-1", type: "text", content: "Hello", x: 100, y: 100 }],
+        overlays: [
+          {
+            id: "overlay-1",
+            effectId: "overlay-asset-1",
+            type: "overlay",
+            url: "blob:test",
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 200,
+            rotation: 0,
+            opacity: 1,
+            blendMode: "normal",
+            startTime: 0,
+            duration: 5,
+            loop: false,
+          },
+        ],
       });
 
       const command = new SplitClipCommand("original-clip", 5.0, 30, clip);
@@ -225,9 +253,36 @@ describe("SplitClipCommand Integration Tests", () => {
     it("should handle split with complex effects structure", () => {
       const clip = createTestClip({
         effects: [
-          { id: "blur-1", type: "blur", enabled: true, intensity: 0.5 },
-          { id: "brightness-1", type: "brightness", enabled: true, intensity: 0.2 },
-          { id: "contrast-1", type: "contrast", enabled: false, intensity: 0.3 },
+          {
+            id: "effect-1",
+            effectId: "preset-1",
+            type: "effect",
+            renderer: "blur",
+            params: {},
+            startTime: 0,
+            duration: 5,
+            intensity: 0.5,
+          },
+          {
+            id: "effect-2",
+            effectId: "preset-2",
+            type: "effect",
+            renderer: "brightness",
+            params: {},
+            startTime: 0,
+            duration: 5,
+            intensity: 0.2,
+          },
+          {
+            id: "effect-3",
+            effectId: "preset-3",
+            type: "effect",
+            renderer: "contrast",
+            params: {},
+            startTime: 0,
+            duration: 5,
+            intensity: 0.3,
+          },
         ],
         volume: 0.75,
       });
