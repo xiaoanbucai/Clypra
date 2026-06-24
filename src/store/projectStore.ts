@@ -57,6 +57,9 @@ interface ProjectStore {
 
 const graphemeSegmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
 
+// ✅ FIX-005: Load mutex to prevent concurrent project loads
+let loadInProgress: Promise<void> | null = null;
+
 const countGraphemes = (str: string): number => {
   return Array.from(graphemeSegmenter.segment(str)).length;
 };
@@ -250,94 +253,110 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   loadProject: async (project, payload) => {
-    console.log("📂 [PROJECT STORE] Loading project:", project.name, "clips:", payload?.clips?.length, "mediaAssets:", payload?.mediaAssets?.length);
-
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // PHASE 1: Dispose Previous Runtime & Reset State
-    // ═══════════════════════════════════════════════════════════════════════════════
-    try {
-      const { disposeActiveSession } = await import("@/core/runtime/ProjectSession");
-      await disposeActiveSession();
-      console.log("  ✅ Previous session disposed");
-    } catch (err) {
-      console.error("  ❌ Previous session disposal failed:", err);
+    // ✅ FIX-005: Wait for previous load to complete to prevent concurrent load races
+    if (loadInProgress) {
+      console.log("[PROJECT STORE] Waiting for previous load to complete...");
+      await loadInProgress;
     }
 
-    // Reset all project-scoped state BEFORE loading new project
-    try {
-      const { resetAllProjectState } = await import("@/core/runtime/ProjectStateReset");
-      const resetResult = await resetAllProjectState();
+    // Wrap load logic in a promise we can track
+    loadInProgress = (async () => {
+      try {
+        console.log("📂 [PROJECT STORE] Loading project:", project.name, "clips:", payload?.clips?.length, "mediaAssets:", payload?.mediaAssets?.length);
 
-      if (!resetResult.success) {
-        console.warn("⚠️ Some subsystems failed to reset:", resetResult.errors);
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // PHASE 1: Dispose Previous Runtime & Reset State
+        // ═══════════════════════════════════════════════════════════════════════════════
+        try {
+          const { disposeActiveSession } = await import("@/core/runtime/ProjectSession");
+          await disposeActiveSession();
+          console.log("  ✅ Previous session disposed");
+        } catch (err) {
+          console.error("  ❌ Previous session disposal failed:", err);
+        }
+
+        // Reset all project-scoped state BEFORE loading new project
+        try {
+          const { resetAllProjectState } = await import("@/core/runtime/ProjectStateReset");
+          const resetResult = await resetAllProjectState();
+
+          if (!resetResult.success) {
+            console.warn("⚠️ Some subsystems failed to reset:", resetResult.errors);
+          }
+        } catch (err) {
+          console.error("❌ [PROJECT STORE] State reset failed:", err);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // PHASE 2: Load Project & Media Assets
+        // ═══════════════════════════════════════════════════════════════════════════════
+        set({ project, mediaAssets: payload?.mediaAssets ?? [] });
+        console.log("  ✅ Project and media assets loaded");
+
+        await preloadTextEffectDefinitionsFromClips(payload?.clips);
+
+        // Preload text templates and their fonts with persistent caching
+        try {
+          const { useTemplateStore } = await import("@/features/text-templates/templateStore");
+          await useTemplateStore.getState().preloadTemplatesAndFontsForClips(payload?.clips ?? []);
+        } catch (err) {
+          // Preload failed silently
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // PHASE 3: Hydrate Timeline State
+        // ═══════════════════════════════════════════════════════════════════════════════
+        try {
+          const { useTimelineStore } = await import("./timelineStore");
+          const normalizedClips = normalizeLoadedTextEffectClipBounds(payload?.clips ?? [], project);
+          useTimelineStore.getState().hydrateFromProject({
+            tracks: payload?.tracks ?? [],
+            clips: normalizedClips,
+            transitions: payload?.transitions ?? [],
+            gaps: (payload as any)?.gaps ?? [],
+          });
+          console.log("  ✅ Timeline hydrated");
+        } catch (err) {
+          console.error("  ❌ Timeline hydration failed:", err);
+          // On error, reset timeline to empty state
+          import("./timelineStore").then(({ useTimelineStore }) => useTimelineStore.getState().hydrateFromProject({ tracks: [], clips: [], transitions: [], gaps: [] })).catch(() => {});
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // PHASE 4: Initialize New Runtime Session
+        // ═══════════════════════════════════════════════════════════════════════════════
+        try {
+          const { createProjectSession } = await import("@/core/runtime/ProjectSession");
+          await createProjectSession(project.id);
+          console.log("  ✅ New session initialized");
+        } catch (err) {
+          console.error("  ❌ Session initialization failed:", err);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // PHASE 5: Prewarm Video Decoders (Background)
+        // ═══════════════════════════════════════════════════════════════════════════════
+        try {
+          const { prewarmDecoders } = await import("@/lib/platform/tauri");
+          const videoAssets = (payload?.mediaAssets ?? []).filter((a) => a.type === "video");
+          if (videoAssets.length > 0) {
+            const videoPaths = videoAssets.map((a) => a.path);
+            prewarmDecoders(videoPaths).then((count) => {
+              console.log(`  ✅ Prewarmed ${count}/${videoPaths.length} video decoders`);
+            });
+          }
+        } catch (err) {
+          // Prewarming failed silently - graceful degradation
+        }
+
+        console.log("✅ [PROJECT STORE] Project loaded successfully");
+      } finally {
+        // ✅ FIX-005: Clear load mutex after completion
+        loadInProgress = null;
       }
-    } catch (err) {
-      console.error("❌ [PROJECT STORE] State reset failed:", err);
-    }
+    })();
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // PHASE 2: Load Project & Media Assets
-    // ═══════════════════════════════════════════════════════════════════════════════
-    set({ project, mediaAssets: payload?.mediaAssets ?? [] });
-    console.log("  ✅ Project and media assets loaded");
-
-    await preloadTextEffectDefinitionsFromClips(payload?.clips);
-
-    // Preload text templates and their fonts with persistent caching
-    try {
-      const { useTemplateStore } = await import("@/features/text-templates/templateStore");
-      await useTemplateStore.getState().preloadTemplatesAndFontsForClips(payload?.clips ?? []);
-    } catch (err) {
-      // Preload failed silently
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // PHASE 3: Hydrate Timeline State
-    // ═══════════════════════════════════════════════════════════════════════════════
-    try {
-      const { useTimelineStore } = await import("./timelineStore");
-      const normalizedClips = normalizeLoadedTextEffectClipBounds(payload?.clips ?? [], project);
-      useTimelineStore.getState().hydrateFromProject({
-        tracks: payload?.tracks ?? [],
-        clips: normalizedClips,
-        transitions: payload?.transitions ?? [],
-        gaps: (payload as any)?.gaps ?? [],
-      });
-      console.log("  ✅ Timeline hydrated");
-    } catch (err) {
-      console.error("  ❌ Timeline hydration failed:", err);
-      // On error, reset timeline to empty state
-      import("./timelineStore").then(({ useTimelineStore }) => useTimelineStore.getState().hydrateFromProject({ tracks: [], clips: [], transitions: [], gaps: [] })).catch(() => {});
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // PHASE 4: Initialize New Runtime Session
-    // ═══════════════════════════════════════════════════════════════════════════════
-    try {
-      const { createProjectSession } = await import("@/core/runtime/ProjectSession");
-      await createProjectSession(project.id);
-      console.log("  ✅ New session initialized");
-    } catch (err) {
-      console.error("  ❌ Session initialization failed:", err);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // PHASE 5: Prewarm Video Decoders (Background)
-    // ═══════════════════════════════════════════════════════════════════════════════
-    try {
-      const { prewarmDecoders } = await import("@/lib/platform/tauri");
-      const videoAssets = (payload?.mediaAssets ?? []).filter((a) => a.type === "video");
-      if (videoAssets.length > 0) {
-        const videoPaths = videoAssets.map((a) => a.path);
-        prewarmDecoders(videoPaths).then((count) => {
-          console.log(`  ✅ Prewarmed ${count}/${videoPaths.length} video decoders`);
-        });
-      }
-    } catch (err) {
-      // Prewarming failed silently - graceful degradation
-    }
-
-    console.log("✅ [PROJECT STORE] Project loaded successfully");
+    return loadInProgress;
   },
 
   addMediaAsset: (asset) => {
@@ -432,6 +451,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Ensure any pending auto-save completes before closing
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer);
+      autoSaveTimer = null; // ✅ FIX-002: Clear timer reference to prevent stale timer from firing
       const state = get();
       const { project, mediaAssets } = state;
 
@@ -511,11 +531,21 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Respect the auto-save toggle from settings
     if (!useSettingsStore.getState().autoSave) return;
 
+    // ✅ FIX-001: Capture project ID at schedule time to prevent cross-project corruption
+    const scheduledProjectId = get().project?.id;
+    if (!scheduledProjectId) return;
+
     autoSaveTimer = setTimeout(async () => {
       const state = get();
       const { project, mediaAssets } = state;
 
       if (!project) return;
+
+      // ✅ FIX-001: Validate project hasn't changed during debounce window
+      if (project.id !== scheduledProjectId) {
+        console.log("[AUTO-SAVE] Project switched during debounce window, cancelling save for", scheduledProjectId);
+        return;
+      }
 
       try {
         // Import timeline store to get tracks and clips
