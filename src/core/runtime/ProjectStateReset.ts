@@ -56,6 +56,8 @@ export interface ResetOptions {
   resetTransform?: boolean;
   /** Reset performance monitors */
   resetMonitoring?: boolean;
+  /** Flush GPU texture cache (FINDING-009 / CONTAMINATION-004) */
+  resetGPUCache?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ const DEFAULT_RESET_OPTIONS: Required<ResetOptions> = {
   resetViewport: true,
   resetTransform: true,
   resetMonitoring: true,
+  resetGPUCache: true,
 };
 
 /**
@@ -258,6 +261,22 @@ export async function resetAllProjectState(options: ResetOptions = {}): Promise<
     } catch (error) {
       errors.push({ subsystem: "PerformanceMonitor", error: error as Error });
       console.error("  ❌ PerformanceMonitor reset failed:", error);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PHASE 6: Flush GPU Texture Cache (FINDING-009 / CONTAMINATION-004)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  if (opts.resetGPUCache) {
+    try {
+      const { globalGPUCache } = await import("@/lib/cache/globalGPUCache");
+      const evicted = globalGPUCache.clearAllTextures();
+      resetSubsystems.push("GlobalGPUCache");
+      console.log(`  ✅ GlobalGPUCache flushed (${evicted} textures evicted)`);
+    } catch (error) {
+      errors.push({ subsystem: "GlobalGPUCache", error: error as Error });
+      console.error("  ❌ GlobalGPUCache flush failed:", error);
     }
   }
 
