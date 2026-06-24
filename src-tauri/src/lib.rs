@@ -64,6 +64,7 @@ pub fn run() {
             decode_frame_gpu,
             decode_frames_streaming,
             release_video_decoder,
+            prewarm_decoders,
             get_render_artifact,
             get_render_artifacts_batch,
             // Video export commands
