@@ -306,7 +306,7 @@ export const LaunchScreen: React.FC<LaunchScreenProps> = ({ onProjectCreate, onP
 
                       {/* Dropdown menu */}
                       {menuOpen === project.id && (
-                        <div ref={menuRef} className="absolute top-full left-0 mt-1 z-50 min-w-[140px] rounded-lg border border-border bg-surface py-1 shadow-xl overflow-hidden">
+                        <div ref={menuRef} className="absolute top-full right-0 mt-1 z-50 min-w-[140px] rounded-lg border border-border bg-surface py-1 shadow-xl overflow-hidden">
                           <button onClick={(e) => handleRenameClick(e, project)} className="w-full px-3 py-2 text-left flex items-center gap-2 text-sm text-text-primary hover:bg-surface-raised transition-colors cursor-pointer">
                             <Pencil className="w-3.5 h-3.5" />
                             Rename

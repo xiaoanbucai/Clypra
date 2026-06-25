@@ -535,10 +535,6 @@ export const ProgramPreview: React.FC = () => {
             }
 
             waitingForVideoReady = hasAnyVideoElement && !hasReadyVideo;
-
-            if (waitingForVideoReady) {
-              console.log(`⏳ Waiting for video metadata...`);
-            }
           }
         }
       }

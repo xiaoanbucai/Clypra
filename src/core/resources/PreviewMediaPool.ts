@@ -512,7 +512,6 @@ export class PreviewMediaPool {
         // CRITICAL FIX: Elements in grace period during PLAYING must also be paused if not active
         // This prevents audio bleed when seeking backwards during playback
         if (isInTransitionGrace && syncState.state === "playing" && !isActive && !managed.element.paused) {
-          console.log(`⏸️  [Audio Debug] Pausing grace-period element during seek: ${managed.clipId.substring(0, 25)}... (not active at t=${syncState.time.toFixed(2)}s)`);
           managed.element.pause();
         }
 
@@ -638,7 +637,6 @@ export class PreviewMediaPool {
         continue;
       }
 
-      console.log(`🔥 [Prewarm] Prewarming clip ${clip.id.substring(0, 20)}... at t=${clip.startTime.toFixed(2)}s (lookahead=${(clip.startTime - currentTime).toFixed(2)}s, trimIn=${normalizedTrimIn.toFixed(3)}s)`);
       this.prewarmVideoElement(cacheKey, clip.id, clip.mediaId, sourcePath, normalizedTrimIn);
     }
   }
@@ -660,7 +658,6 @@ export class PreviewMediaPool {
         if (Math.abs(element.currentTime - trimIn) > 0.01) {
           element.currentTime = trimIn;
         }
-        console.log(`✅ [Prewarm] Element ready for clip ${clipId.substring(0, 20)}... (trimIn=${trimIn.toFixed(3)}s, readyState=${element.readyState})`);
       },
       { once: true },
     );
