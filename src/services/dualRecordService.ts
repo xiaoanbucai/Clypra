@@ -89,6 +89,13 @@ export class DualRecordService {
     return this.screenStream;
   }
 
+  /**
+   * Returns true if webcamStream exists and contains at least one active video track.
+   */
+  hasWebcamVideoTrack(): boolean {
+    return !!(this.webcamStream && this.webcamStream.getVideoTracks().length > 0);
+  }
+
   // ─── Device Enumeration ──────────────────────────────────────────────────────
 
   /**
