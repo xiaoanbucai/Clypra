@@ -116,39 +116,6 @@ export const ScreenRecordingPreviewModal: React.FC<ScreenRecordingPreviewModalPr
     };
   }, [cameraSrc]);
 
-  if (!isOpen || filePaths.length === 0) return null;
-
-  const isTrimmed = trimStart > 0 || trimEnd < 100;
-
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      videoRef.current.play().catch(() => {});
-      setIsPlaying(true);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-    }
-  };
-
-  // Drag handlers for custom trimmer and timeline scrubber
-  const handleTimelineMouseDown = (e: React.MouseEvent, type: "start" | "end" | "playhead") => {
-    e.preventDefault();
-    setIsDragging(type);
-  };
-
   // Use refs for latest values to avoid stale closure issues in the
   // global mousemove handler. The effect only re-registers on `isDragging`
   // changes, but the handler always reads current trim values via refs.
@@ -192,6 +159,39 @@ export const ScreenRecordingPreviewModal: React.FC<ScreenRecordingPreviewModalPr
       window.removeEventListener("mouseup", handleGlobalMouseUp);
     };
   }, [isDragging, handleGlobalMouseMove, handleGlobalMouseUp]);
+
+  if (!isOpen || filePaths.length === 0) return null;
+
+  const isTrimmed = trimStart > 0 || trimEnd < 100;
+
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      videoRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  // Drag handlers for custom trimmer and timeline scrubber
+  const handleTimelineMouseDown = (e: React.MouseEvent, type: "start" | "end" | "playhead") => {
+    e.preventDefault();
+    setIsDragging(type);
+  };
 
   const handleDownload = async () => {
     if (isDownloading || !screenPath) return;
