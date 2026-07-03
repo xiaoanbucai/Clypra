@@ -238,36 +238,47 @@ export class DualRecordService {
         });
         this.isPreviewActive = true;
         return { stream: this.webcamStream };
-      } catch (err: any) {
-        console.warn("[DualRecordService] Camera preview failed, attempting audio fallback:", err);
-        const errMessage = err?.message || String(err);
-        const isCameraMissing =
-          err?.name === "NotFoundError" ||
-          err?.name === "DevicesNotFoundError" ||
-          errMessage.includes("No AVVideoCaptureSource") ||
-          errMessage.includes("sandbox extension");
+      } catch (err1) {
+        console.warn("[DualRecordService] Camera request with ideal constraints failed, retrying with video: true...", err1);
+        // Retry with simple video: true constraint for maximum WebKit / macOS AVVideoCaptureSource compatibility
+        try {
+          this.webcamStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: audioConstraints,
+          });
+          this.isPreviewActive = true;
+          return { stream: this.webcamStream };
+        } catch (err2: any) {
+          console.warn("[DualRecordService] Camera request with video: true also failed:", err2);
+          const errMessage = err2?.message || String(err2);
+          const isCameraMissing =
+            err2?.name === "NotFoundError" ||
+            err2?.name === "DevicesNotFoundError" ||
+            errMessage.includes("No AVVideoCaptureSource") ||
+            errMessage.includes("sandbox extension");
 
-        cameraError = isCameraMissing
-          ? "No camera hardware detected."
-          : "Camera access was denied or unavailable.";
+          cameraError = isCameraMissing
+            ? "No camera hardware detected or permission pending."
+            : "Camera access was denied or unavailable.";
 
-        // If audio was also requested, fall back to audio-only so mic test works
-        if (options.audio) {
-          try {
-            this.webcamStream = await navigator.mediaDevices.getUserMedia({
-              video: false,
-              audio: audioConstraints,
-            });
-            this.isPreviewActive = true;
-            return { stream: this.webcamStream, cameraError };
-          } catch (audioErr) {
-            console.error("[DualRecordService] Audio fallback failed:", audioErr);
+          // If audio was also requested, fall back to audio-only so mic test works
+          if (options.audio) {
+            try {
+              this.webcamStream = await navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: audioConstraints,
+              });
+              this.isPreviewActive = true;
+              return { stream: this.webcamStream, cameraError };
+            } catch (audioErr) {
+              console.error("[DualRecordService] Audio fallback failed:", audioErr);
+              this.stopWebcamStream();
+              throw new Error("Could not access camera or microphone. Check macOS System Settings → Privacy & Security.");
+            }
+          } else {
             this.stopWebcamStream();
-            throw new Error("Could not access camera or microphone.");
+            throw new Error(cameraError);
           }
-        } else {
-          this.stopWebcamStream();
-          throw new Error(cameraError);
         }
       }
     }
@@ -436,17 +447,29 @@ export class DualRecordService {
                   : true
                 : false,
             });
-          } catch (err) {
-            console.warn("[DualRecordService] Camera request failed during recording start, falling back to audio-only:", err);
-            if (options.audio) {
+          } catch (err1) {
+            console.warn("[DualRecordService] Camera start failed with ideal constraints, retrying with video: true...", err1);
+            try {
               this.webcamStream = await navigator.mediaDevices.getUserMedia({
-                video: false,
-                audio: options.audioDeviceId
-                  ? { deviceId: { exact: options.audioDeviceId } }
-                  : true,
+                video: true,
+                audio: options.audio
+                  ? options.audioDeviceId
+                    ? { deviceId: { exact: options.audioDeviceId } }
+                    : true
+                  : false,
               });
-            } else {
-              throw err;
+            } catch (err2) {
+              console.warn("[DualRecordService] Camera start failed with video: true, falling back to audio-only:", err2);
+              if (options.audio) {
+                this.webcamStream = await navigator.mediaDevices.getUserMedia({
+                  video: false,
+                  audio: options.audioDeviceId
+                    ? { deviceId: { exact: options.audioDeviceId } }
+                    : true,
+                });
+              } else {
+                throw err2;
+              }
             }
           }
         } else if (options.audio) {
