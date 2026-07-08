@@ -15,16 +15,8 @@ import { renderTextLayerBridged, beginTextFrame, endTextFrame } from "./textBrid
 import { renderStickerLayerBridged, beginStickerFrame, endStickerFrame } from "./stickerBridge.js";
 import { getResourceCache } from "../resources/ResourceCache.js";
 import type { EvaluatedScene, EvaluatedVisualLayer, EvaluatedMediaLayer, EvaluatedTextLayer } from "../evaluation/types.js";
-import { BlurFilter, Filter } from "pixi.js";
-import { AdjustmentFilter } from "pixi-filters";
-import { resolveFilterToIR } from "./filterIR.js";
-import {
-  createGPUPixelateFilter,
-  createGPUScanlinesFilter,
-  createGPURGBSplitFilter,
-  createGPUFilmGrainFilter,
-  createGPUVignetteFilter,
-} from "./gpuFilters.js";
+import { Filter } from "pixi.js";
+import { getOrUpdateFilters, releaseFilterCache, clearFilterCache } from "./filterCache.js";
 
 export class PixiSceneCompositor {
   private renderer: any;
@@ -160,74 +152,9 @@ export class PixiSceneCompositor {
               appW: app?.screen.width,
             });
 
-            const filters: Filter[] = [];
             const width = record.sprite.texture.source.width || mediaLayer.width;
             const height = record.sprite.texture.source.height || mediaLayer.height;
-
-            if (mediaLayer.filter && mediaLayer.filter.intensity > 0.001) {
-              const ir = resolveFilterToIR(mediaLayer.filter.id, mediaLayer.filter.intensity);
-              const adj = new AdjustmentFilter();
-              if (ir.sepia !== undefined) adj.contrast = 1.0 - ir.sepia * 0.15;
-              if (ir.saturate !== undefined) adj.saturation = ir.saturate;
-              if (ir.contrast !== undefined) adj.contrast = ir.contrast;
-              filters.push(adj);
-            }
-
-            for (const effect of mediaLayer.effects || []) {
-              if (effect.intensity <= 0.001) continue;
-              const rendererName = effect.renderer || effect.effectId;
-              const norm = rendererName.replace(/^fx-/, "").replace(/-/g, "_").toLowerCase();
-
-              if (norm === "brightness") {
-                const b = Number(effect.parameters.brightness ?? 1.0) * effect.intensity;
-                filters.push(new AdjustmentFilter({ brightness: b }));
-              } else if (norm === "contrast") {
-                const c = Number(effect.parameters.contrast ?? 1.0) * effect.intensity;
-                filters.push(new AdjustmentFilter({ contrast: c }));
-              } else if (norm === "saturation") {
-                const s = Number(effect.parameters.saturation ?? 1.0) * effect.intensity;
-                filters.push(new AdjustmentFilter({ saturation: s }));
-              } else if (norm === "blur") {
-                const amount = Number(effect.parameters.blur ?? effect.parameters.blurAmount ?? 10) * effect.intensity;
-                filters.push(new BlurFilter({ strength: amount }));
-              } else if (norm === "pixelate") {
-                const size = Math.max(2, Math.floor(Number(effect.parameters.pixelSize ?? 18) * effect.intensity));
-                filters.push(createGPUPixelateFilter(size));
-              } else if (norm === "scanlines") {
-                const count = Math.max(20, Number(effect.parameters.scanlineCount ?? 120));
-                filters.push(createGPUScanlinesFilter(count, effect.intensity));
-              } else if (norm === "rgb_split" || norm === "chromatic_aberration" || norm === "chromatic") {
-                const shift = Number(effect.parameters.rgbSplit ?? effect.parameters.splitDistance ?? 8) * effect.intensity;
-                filters.push(createGPURGBSplitFilter(shift, shift, width, height));
-              } else if (norm === "film_grain" || norm === "grain") {
-                const intensity = Number(effect.parameters.grainIntensity ?? 1.0) * effect.intensity;
-                filters.push(createGPUFilmGrainFilter(intensity, effect.localTime || 0));
-              } else if (norm === "vignette") {
-                filters.push(createGPUVignetteFilter(Number(effect.parameters.radius ?? 0.7), effect.intensity));
-              } else if (norm === "body_outline" || norm === "body_glow" || norm === "body_segmentation_glow" || norm === "body_particles") {
-                const maskData = bodyMasks.get(`${mediaLayer.layerId}_${effect.effectId}`);
-                if (maskData) {
-                  const maskTexture = applyBodyEffectMask(`${mediaLayer.clipId}_${effect.effectId}`, maskData);
-                  
-                  if (norm === "body_outline") {
-                    const color = String(effect.parameters.outlineColor ?? effect.parameters.glowColor ?? "#ffffff");
-                    const thickness = Math.max(1, Number(effect.parameters.thickness ?? 5) * effect.intensity);
-                    filters.push(createGPUBodyOutlineFilter(maskTexture, color, thickness));
-                  } else if (norm === "body_glow" || norm === "body_segmentation_glow") {
-                    const color = String(effect.parameters.glowColor ?? "#00ffff");
-                    const radius = Math.max(2, Number(effect.parameters.glowRadius ?? 22) * effect.intensity);
-                    const alpha = Math.min(1, Number(effect.parameters.glowIntensity ?? 0.8) * effect.intensity);
-                    filters.push(createGPUBodyGlowFilter(maskTexture, color, radius, alpha));
-                  } else if (norm === "body_particles") {
-                    const color = String(effect.parameters.particleColor ?? effect.parameters.glowColor ?? "#00ffff");
-                    const count = Math.floor(Number(effect.parameters.particleCount ?? 120) * effect.intensity);
-                    const time = effect.localTime || 0;
-                    filters.push(createGPUBodyParticlesFilter(maskTexture, color, count, effect.intensity, time));
-                  }
-                }
-              }
-            }
-
+            const filters = getOrUpdateFilters(mediaLayer, width, height, bodyMasks);
             record.sprite.filters = filters.length > 0 ? filters : null;
             record.sprite.zIndex = renderOrder;
           }
@@ -257,6 +184,7 @@ export class PixiSceneCompositor {
         }
         if (frameId - record.lastSeenFrame > 180) {
           releaseMediaSprite(clipId, baseMediaContainer);
+          releaseFilterCache(clipId);
         }
       }
     }
@@ -266,6 +194,7 @@ export class PixiSceneCompositor {
   }
 
   destroy(): void {
+    clearFilterCache();
     if (this.renderer) {
       const baseMediaContainer = this.renderer.getOverlayContainer() || this.renderer.getApp()?.stage;
       if (baseMediaContainer) {
