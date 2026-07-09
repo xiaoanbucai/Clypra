@@ -12,6 +12,7 @@ class PreviewErrorBoundary extends React.Component<{ fallback: React.ReactNode; 
   }
 
   componentDidCatch(error: Error) {
+    console.error("[PreviewLifecycle] PixiProgramPreview error boundary caught:", error);
     this.props.onError(error);
   }
 
@@ -25,6 +26,8 @@ class PreviewErrorBoundary extends React.Component<{ fallback: React.ReactNode; 
 
 export const ProgramPreview: React.FC<any> = (props) => {
   const [previewMode, setPreviewMode] = useState<PreviewMode>(import.meta.env.DEV ? DEV_PREVIEW_MODE : PRODUCTION_PREVIEW_MODE);
+
+  console.info("[PreviewLifecycle] ProgramPreview mode:", previewMode);
 
   const handleWebGLFailure = (error: Error) => {
     console.error("[ProgramPreview] complex-pixi mode failed, falling back to complex-canvas2d for this session", error);
