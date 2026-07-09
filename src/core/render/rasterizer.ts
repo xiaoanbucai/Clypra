@@ -466,7 +466,8 @@ async function rasterizeLayer(ctx: CanvasRenderingContext2D | OffscreenCanvasRen
   }
 
   // Apply opacity
-  ctx.globalAlpha = layer.opacity;
+  const transitionOpacity = (layer as any).transitionOpacity ?? 1.0;
+  ctx.globalAlpha = layer.opacity * transitionOpacity;
 
   // Apply blend mode
   ctx.globalCompositeOperation = mapBlendMode(layer.blendMode);
