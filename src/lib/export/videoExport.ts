@@ -143,7 +143,6 @@ export async function exportVideo(config: VideoExportConfig): Promise<VideoExpor
     }
   };
 
-  // ✅ CRITICAL FIX (FINDING-006): Use extracted utility for audio clip logic
   // This replaces 20+ lines of inline filtering/mapping with a single function call
   const audioClips: ExportAudioClip[] = getActiveAudioClips(clips, tracks, assets, startTime, endTime);
 
@@ -221,7 +220,6 @@ export async function exportVideo(config: VideoExportConfig): Promise<VideoExpor
           const clipEnd = clip.startTime + clip.duration;
           if (time < clip.startTime || time >= clipEnd) continue;
 
-          // ✅ CRITICAL FIX (FINDING-001): Use canonical source time calculation
           // Replaced inline calculation with resolveClipSourceTime utility to ensure consistency
           const { sourceTime } = resolveClipSourceTime(clip, time, {
             clampToRange: true,
@@ -280,7 +278,6 @@ export async function exportVideo(config: VideoExportConfig): Promise<VideoExpor
           await flushFrameBatch();
         }
       } finally {
-        // ✅ CRITICAL FIX (FINDING-005): Release ALL video elements even on error
         // This prevents resource leaks when export fails mid-frame
         for (const video of frameVideoElements) {
           videoPool.releaseElement(video);
