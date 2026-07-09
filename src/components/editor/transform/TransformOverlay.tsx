@@ -20,11 +20,9 @@ import { getTransformController } from "@/core/interactions";
 import { TransformClipCommand } from "@/core/history/commands/TransformCommand";
 import { calculateTransform, getDefaultConstraints, getCursorForHandle } from "@/lib/transform/calculator";
 import { screenToCanvas, canvasToScreen, hitTestClip, type ViewportTransform } from "@/lib/utils/coordinateSystem";
-import { textRenderTrace } from "@/lib/debug/textRenderTrace";
 import { hasTextClipContentTransformDrift, resolveTextClipContentTransform } from "@/lib/text/textClip";
 import type { Clip, TextClip, TransformHandle, TransformState } from "@/types";
 import { ContextMenu } from "@/components/ui/ContextMenu";
-import type { ContextMenuItem } from "@/components/ui/ContextMenu";
 import { useProjectStore } from "@/store/projectStore";
 import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import { resolveConform } from "@clypra/engine";
@@ -175,25 +173,13 @@ function mouseToCanvas(clientX: number, clientY: number, overlayRect: DOMRect, v
   return screenToCanvas(localX, localY, viewport, { width: canvasWidth, height: canvasHeight }, scale, { x: 0, y: 0 });
 }
 
-export function getUpdatedConformForClipBounds(
-  clip: Clip,
-  newX: number,
-  newY: number,
-  newWidth: number,
-  newHeight: number,
-  canvasWidth: number,
-  canvasHeight: number
-): any | undefined {
+export function getUpdatedConformForClipBounds(clip: Clip, newX: number, newY: number, newWidth: number, newHeight: number, canvasWidth: number, canvasHeight: number): any | undefined {
   if (clip.conform && clip.conform.sourceWidth && clip.conform.sourceHeight) {
-    const baseConformed = resolveConform(
-      { ...clip.conform, userScale: 1, userOffsetX: 0, userOffsetY: 0 },
-      canvasWidth,
-      canvasHeight
-    );
+    const baseConformed = resolveConform({ ...clip.conform, userScale: 1, userOffsetX: 0, userOffsetY: 0 }, canvasWidth, canvasHeight);
     if (baseConformed) {
       const userScale = newWidth / baseConformed.width;
-      const userOffsetX = (newX + newWidth / 2) - canvasWidth / 2;
-      const userOffsetY = (newY + newHeight / 2) - canvasHeight / 2;
+      const userOffsetX = newX + newWidth / 2 - canvasWidth / 2;
+      const userOffsetY = newY + newHeight / 2 - canvasHeight / 2;
       return {
         ...clip.conform,
         userScale,
@@ -825,15 +811,7 @@ export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth,
       }
 
       if (selectedClip.conform && selectedClip.conform.sourceWidth && selectedClip.conform.sourceHeight) {
-        const updatedConform = getUpdatedConformForClipBounds(
-          selectedClip,
-          newTransform.x ?? selectedClip.x,
-          newTransform.y ?? selectedClip.y,
-          newTransform.width ?? selectedClip.width,
-          newTransform.height ?? selectedClip.height,
-          canvasWidth,
-          canvasHeight
-        );
+        const updatedConform = getUpdatedConformForClipBounds(selectedClip, newTransform.x ?? selectedClip.x, newTransform.y ?? selectedClip.y, newTransform.width ?? selectedClip.width, newTransform.height ?? selectedClip.height, canvasWidth, canvasHeight);
         if (updatedConform) {
           (newTransform as any).conform = updatedConform;
         }
@@ -1178,24 +1156,6 @@ export const TransformOverlay: React.FC<TransformOverlayProps> = ({ canvasWidth,
   const showRightGuide = isDragging && snappedRight;
   const showTopGuide = isDragging && snappedTop;
   const showBottomGuide = isDragging && snappedBottom;
-
-  textRenderTrace("text-overlay-bounds", {
-    clipId: selectedClip.id,
-    kind: selectedClip.kind,
-    styleId: (selectedClip as any).styleId,
-    text: (selectedClip as any).text,
-    fontFamily: (selectedClip as any).fontFamily,
-    fontSize: (selectedClip as any).fontSize,
-    fontWeight: (selectedClip as any).fontWeight,
-    background: (selectedClip as any).background,
-    hasStyleDefinition: !!(selectedClip as any).styleDefinition,
-    canvasBounds: { x: selectedClip.x, y: selectedClip.y, width: selectedClip.width, height: selectedClip.height },
-    screenBounds: { x: handleDisplayX, y: handleDisplayY, width: handleDisplayWidth, height: handleDisplayHeight },
-    scale,
-    viewport,
-    display: { width: displayWidth, height: displayHeight },
-    currentTime,
-  });
 
   return (
     <div
