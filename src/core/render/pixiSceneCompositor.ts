@@ -24,6 +24,10 @@ export class PixiSceneCompositor {
   private transitionRenderTextures = new Map<"from" | "to", RenderTexture>();
   private transitionOffscreenContainers = new Map<"from" | "to", Container>();
   private hadActiveTransition = false;
+  private isDestroying = false;
+  private canvas: HTMLCanvasElement | null = null;
+  private contextLostHandler: ((event: Event) => void) | null = null;
+  private contextRestoredHandler: ((event: Event) => void) | null = null;
 
   // Services and managers for code organization
   private mediaPool: PreviewMediaPool;
@@ -32,6 +36,7 @@ export class PixiSceneCompositor {
   private spriteLifecycle: SpriteLifecycleManager;
 
   constructor(canvas: HTMLCanvasElement, width: number, height: number, mediaPool: PreviewMediaPool) {
+    this.canvas = canvas;
     this.renderer = getSharedPixiRenderer(canvas, width, height);
 
     // Initialize services and managers
@@ -39,6 +44,65 @@ export class PixiSceneCompositor {
     this.conformCapture = new ConformCaptureService();
     this.filterManager = new FilterManager();
     this.spriteLifecycle = new SpriteLifecycleManager();
+
+    // Handle WebGL context loss
+    this.setupContextLossHandlers(canvas);
+  }
+
+  private setupContextLossHandlers(canvas: HTMLCanvasElement): void {
+    this.contextLostHandler = (event: Event) => {
+      event.preventDefault();
+
+      console.warn("[PreviewLifecycle] webgl:context-lost", {
+        intentional: this.isDestroying,
+        timestamp: performance.now(),
+      });
+
+      if (this.isDestroying) {
+        // Expected teardown, not an error
+        return;
+      }
+
+      console.error("[PixiSceneCompositor] Unexpected WebGL context loss");
+      // TODO: Add metrics tracking here
+      // metrics.increment("preview.webgl_context_lost.unexpected");
+    };
+
+    this.contextRestoredHandler = (event: Event) => {
+      if (this.isDestroying) {
+        return;
+      }
+
+      console.log("[PixiSceneCompositor] WebGL context restored");
+      // TODO: Add recovery logic here if needed
+    };
+
+    canvas.addEventListener("webglcontextlost", this.contextLostHandler);
+    canvas.addEventListener("webglcontextrestored", this.contextRestoredHandler);
+  }
+
+  /**
+   * Resize the compositor without destroying GPU resources.
+   * Called when displayWidth/displayHeight changes.
+   */
+  resize(width: number, height: number, resolution = window.devicePixelRatio): void {
+    if (!this.renderer?.resize) {
+      console.warn("[PixiSceneCompositor] Cannot resize: renderer not available");
+      return;
+    }
+
+    try {
+      this.renderer.resize(width, height, resolution);
+
+      // Resize transition render textures if they exist
+      for (const [key, texture] of this.transitionRenderTextures.entries()) {
+        texture.resize(width, height);
+      }
+
+      console.log(`[PixiSceneCompositor] Resized to ${width}x${height} @ ${resolution}x DPR`);
+    } catch (err) {
+      console.error("[PixiSceneCompositor] Resize failed:", err);
+    }
   }
 
   async composeFrame(scene: EvaluatedScene, viewport: { scale: number; offsetX: number; offsetY: number; pixelRatio: number; projectWidth?: number; projectHeight?: number }, videoElements: Map<string, HTMLVideoElement>, resourceHandleMap?: Map<string, any>, bodyMasks: Map<string, any> = new Map()): Promise<void> {
@@ -311,6 +375,19 @@ export class PixiSceneCompositor {
   }
 
   destroy(): void {
+    this.isDestroying = true;
+
+    // Remove context loss handlers
+    if (this.canvas && this.contextLostHandler) {
+      this.canvas.removeEventListener("webglcontextlost", this.contextLostHandler);
+      this.contextLostHandler = null;
+    }
+    if (this.canvas && this.contextRestoredHandler) {
+      this.canvas.removeEventListener("webglcontextrestored", this.contextRestoredHandler);
+      this.contextRestoredHandler = null;
+    }
+    this.canvas = null;
+
     clearFilterCache();
 
     // Clean up offscreen textures
