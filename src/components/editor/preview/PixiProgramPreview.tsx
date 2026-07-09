@@ -337,11 +337,12 @@ export const PixiProgramPreview: React.FC = () => {
       );
 
       const activeSetChanged = scene.metadata.activeMediaHash !== lastSyncedMediaHashRef.current;
-      const needsSync = activeSetChanged || epochChanged || isFirstFrame || playbackStateChanged || (!isPlaying && timeChanged);
+      const needsSync = activeSetChanged || epochChanged || isFirstFrame || playbackStateChanged || (!isPlaying && timeChanged) || isPlaying;
 
       const session = getActiveSessionOrNull();
 
       if (needsSync && session && session.state === "active") {
+        console.log(`[PixiProgramPreview] Syncing preview media at time = ${timeToRenderRounded.toFixed(3)}s. Reason: activeSetChanged=${activeSetChanged}, epochChanged=${epochChanged}, isFirstFrame=${isFirstFrame}, playbackStateChanged=${playbackStateChanged}, isPlaying=${isPlaying}`);
         try {
           session.syncPreviewMedia(
             getPreviewMediaSyncClips(state.clips, timeToRenderRounded, state.transitions),
@@ -359,31 +360,6 @@ export const PixiProgramPreview: React.FC = () => {
           lastSyncedMediaHashRef.current = scene.metadata.activeMediaHash ?? "";
         } catch (error) {
           console.error(`[PixiProgramPreview] syncPreviewMedia error:`, error);
-        }
-      } else if (!needsSync && isPlaying && session && session.state === "active") {
-        // Cheap per-frame drift check when full sync is gated
-        const activeVideoElements = session.getPreviewVideoElements();
-        for (const [key, videoEl] of activeVideoElements) {
-          const hyphenIndex = key.indexOf("-");
-          if (hyphenIndex === -1) continue;
-          const clipId = key.substring(0, hyphenIndex);
-          const clip = state.clips.find((c) => c.id === clipId);
-          if (clip && clip.kind === "video") {
-            const res = resolveClipSourceTime(clip, timeToRenderRounded, {
-              clampToRange: true,
-              frameRate,
-            });
-            if (res.active) {
-              const expectedTime = res.sourceTime;
-              const duration = videoEl.duration;
-              const clampedTime = Number.isFinite(duration) && duration > 0 ? Math.max(0, Math.min(expectedTime, duration - 0.001)) : expectedTime;
-              const drift = Math.abs(videoEl.currentTime - clampedTime);
-              const driftTolerance = 2.0 / frameRate; // e.g. ~0.083s at 24fps
-              if (drift > driftTolerance) {
-                videoEl.currentTime = clampedTime;
-              }
-            }
-          }
         }
       }
 
