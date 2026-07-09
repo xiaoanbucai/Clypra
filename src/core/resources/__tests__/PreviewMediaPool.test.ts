@@ -4420,15 +4420,20 @@ describe("PreviewMediaPool — FINDING-008: Memory-Aware Adaptive Eviction", () 
       transitions: [
         {
           id: "trans-1",
-          type: "cross-dissolve",
+          kind: "transition",
+          type: "dissolve",
           fromItemId: "left-clip",
           toItemId: "right-clip",
+          alignment: "center",
+          easing: "linear",
           placement: {
             trackId: "track-1",
             startTime: 4.5,
             duration: 1.5,
+            role: "effect",
+            zIndex: 1,
           },
-        },
+        } as any,
       ],
     });
 
