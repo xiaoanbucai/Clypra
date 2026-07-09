@@ -322,6 +322,14 @@ export class ProjectSession {
   }
 
   /**
+   * Get the PreviewMediaPool instance for compositor integration.
+   * @internal Used by PixiSceneCompositor for texture management
+   */
+  getPreviewMediaPool(): PreviewMediaPool | null {
+    return this._previewMediaPool;
+  }
+
+  /**
    * Get active audio elements.
    */
   getPreviewAudioElements(): Map<string, HTMLAudioElement> {

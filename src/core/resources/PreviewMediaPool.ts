@@ -34,6 +34,9 @@ import { resolveClipSourceTime } from "../timeline/sourceTime";
 import { performanceMonitor } from "@/lib/monitoring/PerformanceMonitor";
 import { resourceTracker } from "@/lib/monitoring/ResourceTracker";
 import { useTimelineStore } from "../../store/timelineStore";
+import { PreviewPlaybackScheduler, type MediaAction, type MediaElementState } from "../playback/PreviewPlaybackScheduler";
+import { VideoTextureManager } from "../render/VideoTextureManager";
+import { getTraceCollector } from "../monitoring/PerformanceTraceCollector";
 
 export interface PreviewSyncState {
   /** Current playback time (seconds) */
@@ -80,6 +83,8 @@ interface ManagedVideo {
   registrationGraceUntil: number;
   /**  Generation counter to invalidate stale RVFC callbacks */
   rvfcGeneration: number;
+  /** Whether this video has been seeked at least once (ensures frame decode) */
+  hasBeenSeeked: boolean;
 }
 
 interface ManagedAudio {
@@ -244,9 +249,19 @@ export class PreviewMediaPool {
   private _projectId: string | null = null;
   private _sessionId: string | null = null;
 
+  // ─── BOUNDARY COMPONENTS ─────────────────────────────────────────────────
+  private scheduler: PreviewPlaybackScheduler;
+  private textureManager: VideoTextureManager;
+  private traceCollector = getTraceCollector();
+  private frameStartTime: number = 0;
+
   constructor(projectId?: string, sessionId?: string) {
     this._projectId = projectId ?? null;
     this._sessionId = sessionId ?? null;
+
+    // Initialize boundary components
+    this.scheduler = new PreviewPlaybackScheduler();
+    this.textureManager = new VideoTextureManager();
 
     this.container = document.createElement("div");
     // Position fixed and practically invisible, but NOT offscreen.
@@ -431,6 +446,10 @@ export class PreviewMediaPool {
           // Element exists - update its binding
           managed.clipId = clip.id;
           managed.lastUsedAt = performance.now();
+
+          // CRITICAL: Reset seek state when element reassigned to different clip
+          // This ensures scheduler forces initial seek for frame decode on new clip
+          managed.hasBeenSeeked = false;
         }
 
         // Mark activity state (does NOT dispose when inactive)
@@ -602,6 +621,30 @@ export class PreviewMediaPool {
         this.prewarmUpcomingClips(clips, assets, syncState.time, syncState.frameRate);
       }
 
+      // ─── SCHEDULER INTEGRATION ────────────────────────────────────────────────
+      // Build media states from current video elements
+      const schedulerStart = performance.now();
+      const mediaStates = this.buildMediaStates(clips, syncState, tracks, assets, activeTransitions);
+
+      // Get actions from scheduler
+      const actions = this.scheduler.reconcile(syncState, mediaStates, clips, assets, Array.from(desiredVideoBindings.values()).filter((v) => v.isActive).length);
+
+      // 🐛 DEBUG: Log scheduler activity
+      if (import.meta.env.DEV) {
+        if (actions.length > 0) {
+          console.log(`[PreviewMediaPool] Scheduler generated ${actions.length} actions:`, actions.map((a) => `${a.type}(${a.clipId.slice(0, 8)}${a.time !== undefined ? `, t=${a.time.toFixed(3)}` : ""}${a.reason ? `, ${a.reason}` : ""})`).join(", "));
+        }
+        if (mediaStates.size === 0 && clips.length > 0) {
+          console.warn(`[PreviewMediaPool] No media states built but ${clips.length} clips exist, ${this.videoCache.size} videos cached`);
+        }
+      }
+
+      // Execute actions
+      this.executeSchedulerActions(actions, syncState, clips, tracks, assets, activeTransitions);
+      const schedulerMs = performance.now() - schedulerStart;
+
+      // ─── END OF SCHEDULER LOGIC ──────────────────────────────────────────────
+
       // ─── END OF ORIGINAL SYNC LOGIC ──────────────────────────────────────────
 
       // MONITORING: Track pool sizes
@@ -757,6 +800,172 @@ export class PreviewMediaPool {
     for (const managed of this.audios.values()) {
       managed.element.pause();
     }
+  }
+
+  // ─── SCHEDULER HELPER METHODS ────────────────────────────────────────────
+
+  /**
+   * Build media states from current video elements for scheduler.
+   *
+   * CRITICAL: Include ALL timeline clips (not just active ones) so scheduler
+   * can make decisions about prewarming, pausing inactive clips, etc.
+   */
+  private buildMediaStates(clips: Clip[], syncState: PreviewSyncState, tracks: Array<{ id: string; type: string }>, assets: MediaAsset[], activeTransitions: TransitionTimelineItem[]): Map<string, MediaElementState> {
+    const states = new Map<string, MediaElementState>();
+
+    // Find primary video for audio routing
+    const activeVisibleVideoClips = clips.filter((c) => {
+      const a = assets.find((x) => x.id === c.mediaId);
+      if (!a || a.type !== "video") return false;
+      const t = this.trackMap.get(c.trackId);
+      if (t?.visible === false) return false;
+      return getClipSourceTime(c, syncState.time, syncState.frameRate, activeTransitions) !== null;
+    });
+    const primaryVideoClip = findPrimaryVideoClip(activeVisibleVideoClips, tracks);
+
+    // Include ALL timeline clips, not just active ones
+    // The scheduler needs to see inactive clips to generate prewarm/pause actions
+    for (const [cacheKey, managed] of this.videoCache) {
+      const video = managed.element;
+      const isPrimaryAudible = primaryVideoClip?.id === managed.clipId;
+
+      states.set(managed.clipId, {
+        clipId: managed.clipId,
+        mediaId: managed.mediaId,
+        currentTime: video.currentTime,
+        paused: video.paused,
+        seeking: video.seeking,
+        readyState: video.readyState,
+        playbackRate: video.playbackRate,
+        duration: video.duration,
+        lastSeekTimestamp: managed.lastHardSeekAtMs,
+        playPromiseInFlight: managed.playPromiseInFlight,
+        autoplayBlocked: managed.autoplayBlocked,
+        isActive: managed.isActive,
+        isPrimaryAudible,
+        hasBeenSeeked: managed.hasBeenSeeked,
+      });
+    }
+
+    if (import.meta.env.DEV && states.size > 0) {
+      console.log(`[PreviewMediaPool] Built ${states.size} media states for scheduler (active clips: ${activeVisibleVideoClips.length})`);
+    }
+
+    return states;
+  }
+
+  /**
+   * Execute actions from scheduler.
+   */
+  private executeSchedulerActions(actions: MediaAction[], syncState: PreviewSyncState, clips: Clip[], tracks: Array<{ id: string; type: string }>, assets: MediaAsset[], activeTransitions: TransitionTimelineItem[]): void {
+    for (const action of actions) {
+      const managed = this.findManagedVideoByClipId(action.clipId);
+      if (!managed) continue;
+
+      const video = managed.element;
+
+      switch (action.type) {
+        case "seek":
+          if (action.time !== undefined && video.readyState >= 1) {
+            const clampedTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, Math.min(action.time, video.duration - 0.001)) : action.time;
+
+            video.currentTime = clampedTime;
+            managed.lastHardSeekAtMs = performance.now();
+            managed.hasBeenSeeked = true; // Mark as seeked to prevent redundant initial seeks
+
+            // Record seek event
+            if (action.reason) {
+              this.traceCollector.recordSeekRequest(action.clipId, clampedTime, action.reason);
+            }
+
+            // Log for diagnostics (only in dev)
+            if (import.meta.env.DEV && action.reason) {
+              console.log(`[Scheduler] Seek: ${action.clipId} → ${clampedTime.toFixed(3)}s (${action.reason})`);
+            }
+          }
+          break;
+
+        case "play":
+          {
+            // Find clip for requestPlayback
+            const clip = clips.find((c) => c.id === action.clipId);
+            if (!clip) break;
+
+            const track = this.trackMap.get(clip.trackId);
+            const isTrackMuted = track?.muted === true;
+
+            const activeVisibleVideoClips = clips.filter((c) => {
+              const a = assets.find((x) => x.id === c.mediaId);
+              if (!a || a.type !== "video") return false;
+              const t = this.trackMap.get(c.trackId);
+              if (t?.visible === false) return false;
+              return getClipSourceTime(c, syncState.time, syncState.frameRate, activeTransitions) !== null;
+            });
+            const primaryVideoClip = findPrimaryVideoClip(activeVisibleVideoClips, tracks);
+            const isPrimaryAudibleVideo = primaryVideoClip?.id === clip.id;
+
+            // Delegate to existing requestPlayback method
+            this.requestPlayback(managed, clip, syncState, tracks, isPrimaryAudibleVideo);
+          }
+          break;
+
+        case "pause":
+          if (!video.paused) {
+            video.pause();
+          }
+          if (managed.playPromiseInFlight) {
+            managed.playCancelRequested = true;
+          }
+          if (managed.rvfcHandle !== null && this.hasRVFC) {
+            try {
+              video.cancelVideoFrameCallback(managed.rvfcHandle);
+            } catch {
+              // ignore
+            }
+            managed.rvfcHandle = null;
+          }
+          this.traceCollector.recordClipEvent({
+            timestampMs: performance.now(),
+            clipId: action.clipId,
+            event: { type: "pause-requested" },
+          });
+          break;
+
+        case "setRate":
+          if (action.rate !== undefined && Math.abs(video.playbackRate - action.rate) > 0.01) {
+            video.playbackRate = action.rate;
+          }
+          break;
+      }
+    }
+  }
+
+  /**
+   * Find managed video by clip ID.
+   */
+  private findManagedVideoByClipId(clipId: string): ManagedVideo | null {
+    for (const [cacheKey, managed] of this.videoCache) {
+      if (managed.clipId === clipId) {
+        return managed;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check if texture should be updated for a clip.
+   * Exposed for compositor to use VideoTextureManager.
+   */
+  shouldUpdateTexture(clipId: string, video: HTMLVideoElement): boolean {
+    return this.textureManager.shouldUpdate(clipId, video);
+  }
+
+  /**
+   * Mark texture as clean after GPU upload.
+   * Exposed for compositor to use VideoTextureManager.
+   */
+  markTextureClean(clipId: string): void {
+    this.textureManager.markClean(clipId);
   }
 
   /**
@@ -927,6 +1136,8 @@ export class PreviewMediaPool {
       registrationGraceUntil: performance.now() + 5000,
       //  Generation counter to invalidate stale RVFC callbacks
       rvfcGeneration: 0,
+      // CRITICAL: Track if this video has been seeked to ensure initial frame decode
+      hasBeenSeeked: false,
       // ────────────────────────────────────────────────────────────────────
     };
 
@@ -971,6 +1182,19 @@ export class PreviewMediaPool {
         () => {
           managed.ready = true;
           captureDimensions();
+
+          // CRITICAL: Trigger epoch increment to force scheduler reconciliation
+          // Now that video has metadata (readyState >= 1), scheduler can generate seek actions
+          import("../../store/timelineStore")
+            .then(({ useTimelineStore }) => {
+              useTimelineStore.getState().incrementEpoch();
+              if (import.meta.env.DEV) {
+                console.log(`[PreviewMediaPool] Video metadata loaded for ${clipId.slice(0, 8)}, readyState=${video.readyState}, triggering scheduler reconciliation`);
+              }
+            })
+            .catch((err) => {
+              console.error("[PreviewMediaPool] Failed to increment epoch on loadedmetadata:", err);
+            });
         },
         { once: true },
       );
@@ -979,9 +1203,15 @@ export class PreviewMediaPool {
     video.addEventListener(
       "loadeddata",
       () => {
+        // CRITICAL: Trigger epoch increment to allow first frame render
+        // loadeddata fires when currentTime frame data is decoded and ready (readyState >= 2)
+        // This ensures render loop can proceed after scheduler-initiated seek completes
         import("../../store/timelineStore")
           .then(({ useTimelineStore }) => {
             useTimelineStore.getState().incrementEpoch();
+            if (import.meta.env.DEV) {
+              console.log(`[PreviewMediaPool] Video data loaded for ${clipId.slice(0, 8)}, readyState=${video.readyState}, triggering render`);
+            }
           })
           .catch((err) => {
             console.error("[PreviewMediaPool] Failed to import useTimelineStore on loadeddata", err);
@@ -1024,6 +1254,16 @@ export class PreviewMediaPool {
 
     this.videoCache.set(key, managed);
 
+    // Attach to texture manager for frame-driven texture updates
+    this.textureManager.attachVideo(clipId, video);
+
+    // Record clip attachment event
+    this.traceCollector.recordClipEvent({
+      timestampMs: performance.now(),
+      clipId,
+      event: { type: "clip-attached", mediaId },
+    });
+
     return managed;
   }
 
@@ -1049,6 +1289,16 @@ export class PreviewMediaPool {
       }
       managed.rvfcHandle = null;
     }
+
+    // Detach from texture manager
+    this.textureManager.detachVideo(managed.clipId, managed.element);
+
+    // Record clip release event
+    this.traceCollector.recordClipEvent({
+      timestampMs: performance.now(),
+      clipId: managed.clipId,
+      event: { type: "clip-released", reason: "dispose" },
+    });
 
     managed.element.pause();
     managed.element.src = "";
@@ -1098,103 +1348,21 @@ export class PreviewMediaPool {
       (video as any).webkitPreservesPitch = true;
     }
 
+    // ✅ BOUNDARY REFACTOR: Drift detection and seeking moved to PreviewPlaybackScheduler
+    // This method now only handles audio routing and element state updates
+    // All seek decisions are made by scheduler.reconcile() and executed via executeSchedulerActions()
+    // ✅ Playback control also moved to scheduler - it will generate "play" actions
+
     if (sourceTime === null) {
-      const prewarmSourceTime = getClipPrewarmSourceTime(clip, syncState.time);
-      if (prewarmSourceTime !== null && video.readyState >= 1) {
-        const clampedPrewarmTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, Math.min(prewarmSourceTime, video.duration - 0.001)) : prewarmSourceTime;
-        if (Math.abs(video.currentTime - clampedPrewarmTime) > this.DRIFT_TOLERANCE_PAUSED_S) {
-          video.currentTime = clampedPrewarmTime;
-        }
-      }
-      // Clip not active at current time
+      // Clip not active at current time - pause if playing
       if (!video.paused) {
         video.pause();
       }
       return;
     }
 
-    // Seek to correct source time
-    const clampedTime = Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, Math.min(sourceTime, video.duration - 0.001)) : sourceTime;
-
-    if (!video.paused) {
-      if (video.seeking) {
-        return;
-      }
-
-      const drift = Math.abs(video.currentTime - clampedTime);
-      const now = performance.now();
-
-      // Detect abnormal situations requiring immediate seek:
-      // 1. User scrubbing: large drift (>2s but <5s) indicates manual seek
-      // 2. Window regained focus: very large drift (≥5s) after browser throttling
-      const isUserScrubbing = drift > 2.0 && drift < 5.0;
-      const isPostThrottling = drift >= 5.0;
-
-      if (isPostThrottling) {
-        console.warn(`[PreviewMediaPool] Video post-throttling resync on clip ${clip.id}. Drift: ${drift.toFixed(3)}s. Seeking video to match: ${clampedTime.toFixed(3)}s`);
-        // Very large drift - likely browser throttling during window blur
-        // Force immediate resync and allow rapid subsequent seeks by setting timer to distant past
-        video.currentTime = clampedTime;
-        managed.lastHardSeekAtMs = now - 10000; // Set to 10s ago to allow immediate next seek
-      } else if (isUserScrubbing) {
-        // User scrubbing: immediate seek without rate limiting
-        video.currentTime = clampedTime;
-        managed.lastHardSeekAtMs = now;
-      } else {
-        // Automatic sync: rate-limited seeks to prevent audio glitches
-        //  Use audio-friendly sync for ALL video clips when multiple are active
-        // This prevents audio dropout caused by aggressive seeking on overlay clips
-        const useAudioFriendlySync = isPrimaryAudibleVideo || activeVideoClipCount > 1;
-        const hardSeekThreshold = useAudioFriendlySync ? 1.0 : 0.5;
-        const minSeekIntervalMs = useAudioFriendlySync ? 1500 : 400;
-
-        if (drift > hardSeekThreshold && now - managed.lastHardSeekAtMs > minSeekIntervalMs) {
-          console.warn(`[PreviewMediaPool] Video drift corrected on clip ${clip.id}. Drift: ${drift.toFixed(3)}s (threshold: ${hardSeekThreshold}s). Seeking video to match: ${clampedTime.toFixed(3)}s`);
-          video.currentTime = clampedTime;
-          managed.lastHardSeekAtMs = now;
-        }
-      }
-    } else {
-      const drift = Math.abs(video.currentTime - clampedTime);
-      if (drift > this.DRIFT_TOLERANCE_PAUSED_S) {
-        const isWaitingToPlay = syncState.state === "playing" && video.readyState < 3;
-        if (isWaitingToPlay) {
-          // During active playback, if an element is paused (e.g. buffering/loading or waiting for play promise),
-          // only allow major seeks (drift > 2.0s) to prevent infinite seeking loops.
-          if (drift > this.DRIFT_TOLERANCE_PLAYING_ACTIVE_S && video.readyState >= 1) {
-            video.currentTime = clampedTime;
-          }
-        } else {
-          // App is paused/stopped - normal frame seeking (requires readyState >= 1 to seek)
-          if (video.readyState >= 1) {
-            video.currentTime = clampedTime;
-          }
-        }
-      }
-    }
-
-    // NEW ARCHITECTURE: Playback control moved to separate method
-    // sync() only updates state, does NOT initiate playback
-    if (syncState.state === "playing") {
-      this.requestPlayback(managed, clip, syncState, tracks, isPrimaryAudibleVideo);
-    } else {
-      // Not playing - pause and cancel any pending play promises
-      if (!video.paused) {
-        video.pause();
-      }
-      // FIX: Cancel any pending play() promise
-      if (managed.playPromiseInFlight) {
-        managed.playCancelRequested = true;
-      }
-      if (managed.rvfcHandle !== null) {
-        try {
-          video.cancelVideoFrameCallback(managed.rvfcHandle);
-        } catch {
-          // ignore
-        }
-        managed.rvfcHandle = null;
-      }
-    }
+    // Scheduler will handle play/pause decisions via executeSchedulerActions()
+    // This method only configures audio routing and element properties
   }
 
   // ─── NEW: Playback Controller (Separated from sync) ────────────────────
@@ -1208,10 +1376,8 @@ export class PreviewMediaPool {
 
     // Guard 1: Already playing → no-op
     if (!video.paused) {
-      // Register RVFC for frame-accurate sync
-      if (this.hasRVFC && managed.rvfcHandle === null) {
-        this.registerRVFC(managed, clip, syncState, tracks, isPrimaryAudibleVideo);
-      }
+      // ✅ BOUNDARY REFACTOR: RVFC registration removed
+      // VideoTextureManager handles frame callbacks (attached in createVideo)
       return;
     }
 
@@ -1280,15 +1446,13 @@ export class PreviewMediaPool {
           // FIX: Check if play was cancelled while promise was pending
           if (managed.playCancelRequested) {
             managed.playCancelRequested = false;
-            return; // Don't register RVFC or update state
+            return; // Don't update state
           }
 
           managed.lastPlayFailure = null;
 
-          // Register RVFC on successful play
-          if (this.hasRVFC && managed.rvfcHandle === null) {
-            this.registerRVFC(managed, clip, syncState, tracks, isPrimaryAudibleVideo);
-          }
+          // ✅ BOUNDARY REFACTOR: RVFC registration removed
+          // VideoTextureManager handles frame callbacks (attached in createVideo)
 
           this.logPlayAttempt({
             timestamp: now,
@@ -1492,108 +1656,9 @@ export class PreviewMediaPool {
 
   // ─── Private: requestVideoFrameCallback sync ────────────────────────────
 
-  private registerRVFC(managed: ManagedVideo, clip: Clip, syncState: PreviewSyncState, tracks: Array<{ id: string; type: string }>, isPrimaryAudibleVideo: boolean): void {
-    const video = managed.element;
-
-    //  Increment generation to invalidate any pending callbacks
-    // This prevents memory leaks from closures capturing large objects
-    managed.rvfcGeneration++;
-    const generation = managed.rvfcGeneration;
-
-    // Capture only minimal data needed for callback
-    const clipId = clip.id;
-    const mediaId = managed.mediaId;
-    const sourcePath = managed.sourcePath;
-    const clipStartTime = clip.startTime;
-    const clipDuration = clip.duration;
-    const trimIn = clip.trimIn || 0;
-
-    const callback = (_now: number, metadata: VideoFrameCallbackMetadata) => {
-      //  Check generation first - exits immediately if stale
-      if (managed.rvfcGeneration !== generation) return;
-
-      if (this._isDisposed) return;
-
-      // Check if element still exists in cache (by cache key)
-      if (!this.videoCache.has(clipId)) return;
-
-      // Recalculate expected source time based on latest clock state
-      const latestSyncState = this.lastSyncState ?? syncState;
-
-      // FIX (: Use canonical sourceTime calculation instead of inline duplicate
-      // Build minimal clip object for sourceTime resolution
-      const minimalClip: Pick<Clip, "startTime" | "duration" | "trimIn" | "trimOut"> = {
-        startTime: clipStartTime,
-        duration: clipDuration,
-        trimIn,
-        trimOut: trimIn + clipDuration, // Reconstruct trimOut from duration
-      };
-
-      const { sourceTime: currentSourceTime, active } = resolveClipSourceTime(minimalClip, latestSyncState.time, {
-        clampToRange: true,
-        frameRate: latestSyncState.frameRate,
-      });
-
-      if (!active) return;
-
-      const clampedExpected = Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, Math.min(currentSourceTime, video.duration - 0.001)) : currentSourceTime;
-
-      // metadata.mediaTime is the ACTUAL presented frame time — no fake drift
-      const actualMediaTime = metadata.mediaTime;
-      const drift = Math.abs(actualMediaTime - clampedExpected);
-
-      // Audible stream policy:
-      // Never micro-correct rate every frame; only sparse hard correction on major drift.
-      if (isPrimaryAudibleVideo) {
-        const now = performance.now();
-        const minHardSeekIntervalMs = 2000;
-        if (drift > 1.25 && now - managed.lastHardSeekAtMs > minHardSeekIntervalMs) {
-          video.currentTime = clampedExpected;
-          managed.lastHardSeekAtMs = now;
-        }
-        if (Math.abs(video.playbackRate - latestSyncState.speed) > 0.01) {
-          video.playbackRate = latestSyncState.speed;
-        }
-      } else if (drift > 0.1 && drift <= 0.3) {
-        // Only apply gentle corrections at frame presentation time
-        // 100–300ms: soft playbackRate correction
-        const correctionSpeed = actualMediaTime < clampedExpected ? latestSyncState.speed * 1.02 : latestSyncState.speed * 0.98;
-        if (Math.abs(video.playbackRate - correctionSpeed) > 0.01) {
-          video.playbackRate = correctionSpeed;
-        }
-      } else if (drift > 0.3) {
-        // >300ms: hard seek (only at frame presentation time, so it's real drift)
-        const now = performance.now();
-        if (now - managed.lastHardSeekAtMs > 400) {
-          video.currentTime = clampedExpected;
-          managed.lastHardSeekAtMs = now;
-        }
-        if (Math.abs(video.playbackRate - latestSyncState.speed) > 0.01) {
-          video.playbackRate = latestSyncState.speed;
-        }
-      } else if (Math.abs(video.playbackRate - latestSyncState.speed) > 0.01) {
-        // Restore normal speed when in sync
-        video.playbackRate = latestSyncState.speed;
-      }
-
-      // Re-register for next frame (only if generation still matches)
-      if (!video.paused && !this._isDisposed && managed.rvfcGeneration === generation) {
-        try {
-          managed.rvfcHandle = video.requestVideoFrameCallback(callback);
-        } catch {
-          managed.rvfcHandle = null;
-        }
-      } else {
-        managed.rvfcHandle = null;
-      }
-    };
-
-    try {
-      managed.rvfcHandle = video.requestVideoFrameCallback(callback);
-    } catch {
-      managed.rvfcHandle = null;
-    }
-  }
+  // ✅ BOUNDARY REFACTOR: registerRVFC method removed
+  // VideoTextureManager owns all requestVideoFrameCallback logic
+  // PreviewPlaybackScheduler owns all drift detection and seek decisions
 
   // ─── Private: Audio lifecycle ───────────────────────────────────────────
 
@@ -1746,34 +1811,9 @@ export class PreviewMediaPool {
       return;
     }
 
-    const clampedTime = Number.isFinite(audio.duration) && audio.duration > 0 ? Math.max(0, Math.min(sourceTime, audio.duration - 0.001)) : sourceTime;
-
-    if (!audio.paused) {
-      if (audio.seeking) {
-        return;
-      }
-      if (Math.abs(audio.currentTime - clampedTime) > 0.5) {
-        console.warn(`[PreviewMediaPool] Audio drift corrected on clip ${clip.id}. Drift: ${Math.abs(audio.currentTime - clampedTime).toFixed(3)}s. Seeking audio to match: ${clampedTime.toFixed(3)}s`);
-        audio.currentTime = clampedTime;
-      }
-    } else {
-      const drift = Math.abs(audio.currentTime - clampedTime);
-      if (drift > this.DRIFT_TOLERANCE_PAUSED_S) {
-        const isWaitingToPlay = syncState.state === "playing" && audio.readyState < 3;
-        if (isWaitingToPlay) {
-          // During active playback, if audio is paused (buffering/starting),
-          // only allow major seeks (drift > 2.0s) to prevent infinite seeking loops.
-          if (drift > this.DRIFT_TOLERANCE_PLAYING_ACTIVE_S && audio.readyState >= 1) {
-            audio.currentTime = clampedTime;
-          }
-        } else {
-          // App is paused/stopped - normal frame seeking (requires readyState >= 1 to seek)
-          if (audio.readyState >= 1) {
-            audio.currentTime = clampedTime;
-          }
-        }
-      }
-    }
+    // ✅ BOUNDARY REFACTOR: Audio drift detection and seeking moved to PreviewPlaybackScheduler
+    // This method now only handles audio routing and volume control
+    // All seek decisions are made by scheduler.reconcile() and executed via executeSchedulerActions()
 
     if (syncState.state === "playing") {
       this.requestAudioPlayback(managed, syncState);

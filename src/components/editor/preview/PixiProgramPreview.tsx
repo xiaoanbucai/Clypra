@@ -281,12 +281,20 @@ export const PixiProgramPreview: React.FC = () => {
   // ── Initialize PixiSceneCompositor ──────────────────────────────
   useEffect(() => {
     if (!canvasEl || !project) return;
-    
+
     const backingW = Math.round(displayWidth);
     const backingH = Math.round(displayHeight);
 
+    const session = getActiveSessionOrNull();
+    const mediaPool = session?.getPreviewMediaPool();
+
+    if (!mediaPool) {
+      console.error("[PixiProgramPreview] Cannot initialize compositor: PreviewMediaPool not available");
+      return;
+    }
+
     try {
-      compositorRef.current = new PixiSceneCompositor(canvasEl, backingW, backingH);
+      compositorRef.current = new PixiSceneCompositor(canvasEl, backingW, backingH, mediaPool);
     } catch (err) {
       console.error("[PixiProgramPreview] Failed to initialize WebGL Compositor:", err);
     }
@@ -326,15 +334,7 @@ export const PixiProgramPreview: React.FC = () => {
       const playbackStateChanged = lastRenderedPlaybackState !== playbackState;
       const isFirstFrame = lastRenderedTime === -1;
 
-      const scene = evaluateTimelineSceneCached(
-        timeToRenderRounded,
-        state.clips,
-        state.tracks,
-        state.mediaAssets,
-        state.project,
-        state.epoch,
-        state.transitions
-      );
+      const scene = evaluateTimelineSceneCached(timeToRenderRounded, state.clips, state.tracks, state.mediaAssets, state.project, state.epoch, state.transitions);
 
       const activeSetChanged = scene.metadata.activeMediaHash !== lastSyncedMediaHashRef.current;
       const needsSync = activeSetChanged || epochChanged || isFirstFrame || playbackStateChanged || (!isPlaying && timeChanged) || isPlaying;
@@ -344,19 +344,14 @@ export const PixiProgramPreview: React.FC = () => {
       if (needsSync && session && session.state === "active") {
         console.log(`[PixiProgramPreview] Syncing preview media at time = ${timeToRenderRounded.toFixed(3)}s. Reason: activeSetChanged=${activeSetChanged}, epochChanged=${epochChanged}, isFirstFrame=${isFirstFrame}, playbackStateChanged=${playbackStateChanged}, isPlaying=${isPlaying}`);
         try {
-          session.syncPreviewMedia(
-            getPreviewMediaSyncClips(state.clips, timeToRenderRounded, state.transitions),
-            state.mediaAssets,
-            state.tracks,
-            {
-              time: timeToRenderRounded,
-              state: playbackState,
-              speed: state.clock.speed,
-              muted: isMutedRef.current,
-              volume: volumeRef.current,
-              frameRate,
-            }
-          );
+          session.syncPreviewMedia(getPreviewMediaSyncClips(state.clips, timeToRenderRounded, state.transitions), state.mediaAssets, state.tracks, {
+            time: timeToRenderRounded,
+            state: playbackState,
+            speed: state.clock.speed,
+            muted: isMutedRef.current,
+            volume: volumeRef.current,
+            frameRate,
+          });
           lastSyncedMediaHashRef.current = scene.metadata.activeMediaHash ?? "";
         } catch (error) {
           console.error(`[PixiProgramPreview] syncPreviewMedia error:`, error);
@@ -398,7 +393,6 @@ export const PixiProgramPreview: React.FC = () => {
       if (needsRender && forceRenderNeeded) forceRenderNeeded = false;
 
       if (needsRender && compositorRef.current) {
-
         const canvasDpr = window.devicePixelRatio || 1;
         const viewportParams = {
           scale,
@@ -417,7 +411,7 @@ export const PixiProgramPreview: React.FC = () => {
             viewportParams,
             activeVideoElements,
             undefined, // resourceHandleMap (can be left undefined during preview)
-            new Map() // bodyMasks map (we call segmentBodyMask directly in compositor)
+            new Map(), // bodyMasks map (we call segmentBodyMask directly in compositor)
           );
 
           lastRenderedTime = timeToRenderRounded;
@@ -508,7 +502,9 @@ export const PixiProgramPreview: React.FC = () => {
             <div className="text-center space-y-3">
               <div className="text-sm font-medium text-text-muted">No clips in sequence</div>
               <div className="text-xs text-text-muted/80 space-y-1 font-mono">
-                <div>{canvasWidth}×{canvasHeight} • {frameRate}fps</div>
+                <div>
+                  {canvasWidth}×{canvasHeight} • {frameRate}fps
+                </div>
                 <div className="text-text-muted/60">Rec.709</div>
               </div>
             </div>

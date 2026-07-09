@@ -8,13 +8,15 @@ import { clearFilterCache } from "./filterCache.js";
 // Utility imports
 import { extractVisualMediaLayers, calculateMaxTrackIndex, calculateLayerZIndex } from "./utils/zIndexCalculator.js";
 import { resolveMediaSource } from "./utils/mediaResolver.js";
-import { createTextureUpdateStrategy, type TextureUpdateStrategy } from "./utils/textureUpdater.js";
 import { resolveTransitionDefinition, mergeTransitionParams } from "./utils/transitionResolver.js";
 
 // Service and manager imports
 import { ConformCaptureService } from "./services/ConformCaptureService.js";
 import { FilterManager } from "./managers/FilterManager.js";
 import { SpriteLifecycleManager } from "./managers/SpriteLifecycleManager.js";
+
+// Boundary components
+import type { PreviewMediaPool } from "../resources/PreviewMediaPool.js";
 
 export class PixiSceneCompositor {
   private renderer: any;
@@ -24,16 +26,16 @@ export class PixiSceneCompositor {
   private hadActiveTransition = false;
 
   // Services and managers for code organization
-  private textureUpdater: TextureUpdateStrategy;
+  private mediaPool: PreviewMediaPool;
   private conformCapture: ConformCaptureService;
   private filterManager: FilterManager;
   private spriteLifecycle: SpriteLifecycleManager;
 
-  constructor(canvas: HTMLCanvasElement, width: number, height: number) {
+  constructor(canvas: HTMLCanvasElement, width: number, height: number, mediaPool: PreviewMediaPool) {
     this.renderer = getSharedPixiRenderer(canvas, width, height);
 
     // Initialize services and managers
-    this.textureUpdater = createTextureUpdateStrategy("eager");
+    this.mediaPool = mediaPool;
     this.conformCapture = new ConformCaptureService();
     this.filterManager = new FilterManager();
     this.spriteLifecycle = new SpriteLifecycleManager();
@@ -161,10 +163,11 @@ export class PixiSceneCompositor {
             record.lastSeenFrame = frameId;
             record.sprite.visible = true;
 
-            // Update video texture using texture updater strategy
+            // Update video texture using VideoTextureManager from PreviewMediaPool
             if (mediaLayer.mediaType === "video" && sourceElement instanceof HTMLVideoElement) {
-              if (this.textureUpdater.shouldUpdate(mediaLayer.clipId, sourceElement, false)) {
-                this.textureUpdater.update(mediaLayer.clipId, record.texture, sourceElement);
+              if (this.mediaPool.shouldUpdateTexture(mediaLayer.clipId, sourceElement)) {
+                record.texture.source.update();
+                this.mediaPool.markTextureClean(mediaLayer.clipId);
               }
             }
 
@@ -275,10 +278,11 @@ export class PixiSceneCompositor {
       const record = getOrCreateMediaSprite(layer.clipId, layer.mediaType, sourceElement, container);
       record.lastSeenFrame = this.currentFrameId;
 
-      // Update video texture using texture updater strategy
+      // Update video texture using VideoTextureManager from PreviewMediaPool
       if (layer.mediaType === "video" && sourceElement instanceof HTMLVideoElement) {
-        if (this.textureUpdater.shouldUpdate(layer.clipId, sourceElement, false)) {
-          this.textureUpdater.update(layer.clipId, record.texture, sourceElement);
+        if (this.mediaPool.shouldUpdateTexture(layer.clipId, sourceElement)) {
+          record.texture.source.update();
+          this.mediaPool.markTextureClean(layer.clipId);
         }
       }
 
