@@ -568,14 +568,14 @@ describe("ProgramPreview RAF Loop — FINDING-009: Separate needsSync from needs
     /**
      * Simulate RAF tick WITH FINDING-009 optimization
      */
-    tick(time: number, playbackState: "playing" | "paused" | "stopped", epoch: number): void {
+    tick(time: number, playbackState: "playing" | "paused" | "stopped", epoch: number, hasActiveTransform = false): void {
       const timeChanged = time !== this.lastRenderedTime;
       const epochChanged = epoch !== this.lastRenderedEpoch;
       const isFirstFrame = this.lastRenderedTime === -1;
       const isPlaying = playbackState === "playing";
 
-      // needsRender: frame scheduling (every frame during playback)
-      const needsRender = isPlaying || timeChanged || epochChanged || isFirstFrame;
+      // needsRender: frame scheduling (every frame during playback or active transform)
+      const needsRender = isPlaying || timeChanged || epochChanged || isFirstFrame || hasActiveTransform;
 
       // needsSync: element lifecycle (only on state changes)
       const playbackStateChanged = playbackState !== this.lastRenderedPlaybackState;
@@ -1007,5 +1007,23 @@ describe("ProgramPreview RAF Loop — FINDING-009: Separate needsSync from needs
 
     // 202 total renders, but only 2 syncs
     expect(loop.getStats().renderCalls).toBe(202);
+  });
+
+  it("should render when transform is active (even if time/epoch/playbackState unchanged)", () => {
+    // First frame
+    loop.tick(0.0, "paused", 1);
+    expect(loop.getStats().renderCalls).toBe(1);
+
+    // Second frame: stationary, no state changes, no transform → no render
+    loop.tick(0.0, "paused", 1, false);
+    expect(loop.getStats().renderCalls).toBe(1); // Still 1
+
+    // Third frame: stationary, but has active transform → should render!
+    loop.tick(0.0, "paused", 1, true);
+    expect(loop.getStats().renderCalls).toBe(2); // Incremented to 2
+
+    // Fourth frame: still stationary and active transform → should render again!
+    loop.tick(0.0, "paused", 1, true);
+    expect(loop.getStats().renderCalls).toBe(3); // Incremented to 3
   });
 });
