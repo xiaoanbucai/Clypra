@@ -20,8 +20,6 @@ import { evaluateTimelineSceneCached } from "../evaluation/evaluator";
 import { rasterizeScene } from "../render/rasterizer";
 import { getResourceCache } from "../resources/ResourceCache";
 import { getFontLoader } from "../fonts/FontLoader";
-import { textRenderTrace } from "@/lib/debug/textRenderTrace";
-import { performanceMonitor } from "@/lib/debug/performanceMonitor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 /**
@@ -484,30 +482,6 @@ export class FrameScheduler {
       // FIX (BUG-8): Reuse scene from preload phase instead of evaluating a third time
       const scene = job.cachedScene ?? evaluateTimelineSceneCached(job.request.time, this.clips, this.tracks, this.assets, this.project, this.epoch, this.transitions);
 
-      // ✅ Only construct trace payload if debug is enabled (prevents console spam in production)
-      if (import.meta.env.DEV) {
-        const textLayers = scene.visualLayers.filter((layer) => layer.layerType === "text");
-        textRenderTrace("frame-scene", {
-          jobId: job.id,
-          time: job.request.time,
-          epoch: this.epoch,
-          visualLayerCount: scene.visualLayers.length,
-          textLayerCount: textLayers.length,
-          textLayers: textLayers.map((layer) => ({
-            clipId: layer.clipId,
-            layerId: layer.layerId,
-            text: layer.text,
-            styleId: layer.styleId,
-            x: layer.x,
-            y: layer.y,
-            width: layer.width,
-            height: layer.height,
-            opacity: layer.opacity,
-            hasStyleDefinition: !!layer.styleDefinition,
-          })),
-        });
-      }
-
       job.metrics.evaluationTimeMs = Date.now() - evalStartTime;
       this.stats.totalEvaluationTimeMs += job.metrics.evaluationTimeMs;
       // performanceMonitor.endMeasure(`evaluation-${job.id}`, {
@@ -790,14 +764,8 @@ export class FrameScheduler {
                     // silently rendering a black frame
                     isResolved = true;
                     cleanup();
-                    console.error(
-                      `[FrameScheduler] Video frame not ready after 3s timeout. ` +
-                      `readyState=${video.readyState}, seeking=${video.seeking}, ` +
-                      `src=${video.src?.slice(-40)}`
-                    );
-                    reject(new Error(
-                      `Video frame not ready after timeout (readyState=${video.readyState})`
-                    ));
+                    console.error(`[FrameScheduler] Video frame not ready after 3s timeout. ` + `readyState=${video.readyState}, seeking=${video.seeking}, ` + `src=${video.src?.slice(-40)}`);
+                    reject(new Error(`Video frame not ready after timeout (readyState=${video.readyState})`));
                   }
                 }, 3000);
               });
