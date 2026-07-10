@@ -279,7 +279,15 @@ export function evaluateTimelineScene(time: number, clips: Clip[], tracks: Track
           localTime: Math.max(0, evalTime - fxClip.startTime),
         })),
       ],
-      filter: clip.filter,
+      // Apply filter from clip (if directly attached) OR from activeFilterClip (timeline filter track)
+      filter:
+        clip.filter ||
+        (activeFilterClip
+          ? {
+              id: activeFilterClip.mediaId,
+              intensity: normalizeFilterIntensity((activeFilterClip as any).intensity),
+            }
+          : undefined),
     };
 
     visualLayers.push(mediaLayer);

@@ -627,24 +627,7 @@ export class PreviewMediaPool {
       const mediaStates = this.buildMediaStates(clips, syncState, tracks, assets, activeTransitions);
 
       // Get actions from scheduler
-      const actions = this.scheduler.reconcile(
-        syncState,
-        mediaStates,
-        clips,
-        assets,
-        Array.from(desiredVideoBindings.values()).filter((v) => v.isActive).length,
-        activeTransitions
-      );
-
-      // 🐛 DEBUG: Log scheduler activity
-      if (import.meta.env.DEV) {
-        if (actions.length > 0) {
-          console.log(`[PreviewMediaPool] Scheduler generated ${actions.length} actions:`, actions.map((a) => `${a.type}(${a.clipId.slice(0, 8)}${a.time !== undefined ? `, t=${a.time.toFixed(3)}` : ""}${a.reason ? `, ${a.reason}` : ""})`).join(", "));
-        }
-        if (mediaStates.size === 0 && clips.length > 0) {
-          console.warn(`[PreviewMediaPool] No media states built but ${clips.length} clips exist, ${this.videoCache.size} videos cached`);
-        }
-      }
+      const actions = this.scheduler.reconcile(syncState, mediaStates, clips, assets, Array.from(desiredVideoBindings.values()).filter((v) => v.isActive).length, activeTransitions);
 
       // Execute actions
       this.executeSchedulerActions(actions, syncState, clips, tracks, assets, activeTransitions);
@@ -854,10 +837,6 @@ export class PreviewMediaPool {
       });
     }
 
-    if (import.meta.env.DEV && states.size > 0) {
-      console.log(`[PreviewMediaPool] Built ${states.size} media states for scheduler (active clips: ${activeVisibleVideoClips.length})`);
-    }
-
     return states;
   }
 
@@ -883,11 +862,6 @@ export class PreviewMediaPool {
             // Record seek event
             if (action.reason) {
               this.traceCollector.recordSeekRequest(action.clipId, clampedTime, action.reason);
-            }
-
-            // Log for diagnostics (only in dev)
-            if (import.meta.env.DEV && action.reason) {
-              console.log(`[Scheduler] Seek: ${action.clipId} → ${clampedTime.toFixed(3)}s (${action.reason})`);
             }
           }
           break;
@@ -1195,9 +1169,6 @@ export class PreviewMediaPool {
           import("../../store/timelineStore")
             .then(({ useTimelineStore }) => {
               useTimelineStore.getState().incrementEpoch();
-              if (import.meta.env.DEV) {
-                console.log(`[PreviewMediaPool] Video metadata loaded for ${clipId.slice(0, 8)}, readyState=${video.readyState}, triggering scheduler reconciliation`);
-              }
             })
             .catch((err) => {
               console.error("[PreviewMediaPool] Failed to increment epoch on loadedmetadata:", err);
@@ -1216,9 +1187,6 @@ export class PreviewMediaPool {
         import("../../store/timelineStore")
           .then(({ useTimelineStore }) => {
             useTimelineStore.getState().incrementEpoch();
-            if (import.meta.env.DEV) {
-              console.log(`[PreviewMediaPool] Video data loaded for ${clipId.slice(0, 8)}, readyState=${video.readyState}, triggering render`);
-            }
           })
           .catch((err) => {
             console.error("[PreviewMediaPool] Failed to import useTimelineStore on loadeddata", err);

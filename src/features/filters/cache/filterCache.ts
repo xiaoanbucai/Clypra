@@ -100,7 +100,15 @@ class FilterCacheManager {
   }
 
   getCached(filterId: string): CachedFilter | null {
-    return this.cacheIndex.get(filterId) || null;
+    const cached = this.cacheIndex.get(filterId) || null;
+    console.log("[FilterCacheManager] getCached called:", {
+      filterId,
+      found: !!cached,
+      hasGradingParams: cached?.filter?.gradingParams ? true : false,
+      gradingParamsKeys: cached?.filter?.gradingParams ? Object.keys(cached.filter.gradingParams) : [],
+      gradingParams: cached?.filter?.gradingParams,
+    });
+    return cached;
   }
 
   getCachedPath(filterId: string): string | null {
@@ -114,6 +122,17 @@ class FilterCacheManager {
   async downloadFilter(filter: FilterAsset, onProgress?: (progress: FilterDownloadProgress) => void): Promise<CachedFilter> {
     await this.initialize();
 
+    console.log("[FilterCacheManager] downloadFilter called:", {
+      filterId: filter.id,
+      filterName: filter.name,
+      hasGradingParams: !!filter.gradingParams,
+      gradingParamsKeys: filter.gradingParams ? Object.keys(filter.gradingParams) : [],
+      hasUrl: !!filter.url,
+      url: filter.url,
+      pipeline: filter.pipeline,
+      hasEffectStack: !!filter.effectStack,
+    });
+
     if (!this.cacheDir) {
       throw new Error("Cache directory not initialized");
     }
@@ -121,6 +140,11 @@ class FilterCacheManager {
     // Return cached if already downloaded
     if (this.isCached(filter.id)) {
       const cached = this.cacheIndex.get(filter.id)!;
+      console.log("[FilterCacheManager] Filter already cached, returning:", {
+        filterId: cached.id,
+        hasGradingParams: !!cached.filter.gradingParams,
+        gradingParamsKeys: cached.filter.gradingParams ? Object.keys(cached.filter.gradingParams) : [],
+      });
       return cached;
     }
 
@@ -143,16 +167,41 @@ class FilterCacheManager {
       // Fetch full detail when none of the render paths are inlined.
       // Priority: gradingParams (GPU) > effectStack (V2 MPG)
       let finalFilter = { ...filter };
-      const hasRenderData =
-        (!!finalFilter.gradingParams && Object.keys(finalFilter.gradingParams).length > 0) ||
-        (finalFilter.pipeline === "v2" && !!finalFilter.effectStack?.length);
+      const hasRenderData = (!!finalFilter.gradingParams && Object.keys(finalFilter.gradingParams).length > 0) || (finalFilter.pipeline === "v2" && !!finalFilter.effectStack?.length);
       const needsDetail = !hasRenderData && !!finalFilter.url;
+
+      console.log("[FilterCacheManager] Input filter object:", {
+        id: filter.id,
+        name: filter.name,
+        category: filter.category,
+        url: filter.url,
+        pipeline: filter.pipeline,
+        hasGradingParams: !!filter.gradingParams,
+        gradingParams: filter.gradingParams,
+        allKeys: Object.keys(filter),
+      });
+
+      console.log("[FilterCacheManager] Checking if detail fetch needed:", {
+        hasRenderData,
+        needsDetail,
+        url: finalFilter.url,
+        hasGradingParams: !!finalFilter.gradingParams,
+        gradingParamsCount: finalFilter.gradingParams ? Object.keys(finalFilter.gradingParams).length : 0,
+      });
+
       if (needsDetail && finalFilter.url) {
         try {
-          console.log(`[FilterCache] Fetching detailed filter from: ${finalFilter.url}`);
+          console.log(`[FilterCacheManager] Fetching detailed filter from: ${finalFilter.url}`);
           const res = await fetch(finalFilter.url);
           if (res.ok) {
             const remoteFilter = await res.json();
+            console.log("[FilterCacheManager] Remote filter fetched:", {
+              remoteFilterKeys: Object.keys(remoteFilter),
+              hasGradingParams: !!remoteFilter.gradingParams,
+              gradingParams: remoteFilter.gradingParams,
+              gradingParamsKeys: remoteFilter.gradingParams ? Object.keys(remoteFilter.gradingParams) : [],
+            });
+
             finalFilter = {
               ...finalFilter,
               ...remoteFilter,
@@ -160,12 +209,19 @@ class FilterCacheManager {
               name: finalFilter.name,
               category: finalFilter.category,
             };
-            console.log(`[FilterCache] Retrieved detail for ${finalFilter.name} (GPU params: ${!!finalFilter.gradingParams})`);
+
+            console.log(`[FilterCacheManager] Merged filter after fetch:`, {
+              id: finalFilter.id,
+              name: finalFilter.name,
+              hasGradingParams: !!finalFilter.gradingParams,
+              gradingParams: finalFilter.gradingParams,
+              gradingParamsKeys: finalFilter.gradingParams ? Object.keys(finalFilter.gradingParams) : [],
+            });
           } else {
-            console.warn(`[FilterCache] Failed to fetch filter details: ${res.statusText}`);
+            console.warn(`[FilterCacheManager] Failed to fetch filter details: ${res.statusText}`);
           }
         } catch (fetchErr) {
-          console.warn(`[FilterCache] Error fetching filter details from remote:`, fetchErr);
+          console.warn(`[FilterCacheManager] Error fetching filter details from remote:`, fetchErr);
         }
       }
 
@@ -193,12 +249,21 @@ class FilterCacheManager {
         downloadedAt: Date.now(),
       };
 
+      console.log("[FilterCacheManager] Filter cached successfully:", {
+        id: cachedFile.id,
+        fileName: cachedFile.fileName,
+        size: cachedFile.size,
+        hasGradingParams: !!cachedFile.filter.gradingParams,
+        gradingParamsKeys: cachedFile.filter.gradingParams ? Object.keys(cachedFile.filter.gradingParams) : [],
+        gradingParams: cachedFile.filter.gradingParams,
+      });
+
       this.cacheIndex.set(finalFilter.id, cachedFile);
       await this.saveIndex();
 
       return cachedFile;
     } catch (error) {
-      console.error("[FilterCache] Download failed:", error);
+      console.error("[FilterCacheManager] Download failed:", error);
       throw new Error(`Failed to cache filter: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
@@ -212,9 +277,7 @@ class FilterCacheManager {
     if (this.isCached(filter.id)) {
       const cached = this.cacheIndex.get(filter.id)!;
       // Accept cached entry if any render path is present
-      const hasRenderData =
-        (!!cached.filter.gradingParams && Object.keys(cached.filter.gradingParams).length > 0) ||
-        (cached.filter.pipeline === "v2" && !!cached.filter.effectStack?.length);
+      const hasRenderData = (!!cached.filter.gradingParams && Object.keys(cached.filter.gradingParams).length > 0) || (cached.filter.pipeline === "v2" && !!cached.filter.effectStack?.length);
       if (hasRenderData) return cached;
       console.log(`[FilterCache] Cached filter ${filter.name} has no render data. Evicting and re-downloading.`);
       this.cacheIndex.delete(filter.id);

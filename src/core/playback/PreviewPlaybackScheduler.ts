@@ -131,10 +131,6 @@ export class PreviewPlaybackScheduler {
     const actions: MediaAction[] = [];
     const now = performance.now();
 
-    if (import.meta.env.DEV && mediaStates.size > 0) {
-      console.log(`[Scheduler] Reconciling ${mediaStates.size} clips at timeline time=${syncState.time.toFixed(3)}s, state=${syncState.state}`);
-    }
-
     for (const [clipId, state] of mediaStates) {
       // Find clip definition
       const clip = clips.find((c) => c.id === clipId);
@@ -142,10 +138,6 @@ export class PreviewPlaybackScheduler {
 
       // Calculate target time for this clip (transition-aware)
       const targetTime = this.calculateTargetTime(clip, syncState, transitions);
-
-      if (import.meta.env.DEV) {
-        console.log(`[Scheduler] Clip ${clipId.slice(0, 8)}: targetTime=${targetTime?.toFixed(3) ?? "null"}, currentTime=${state.currentTime.toFixed(3)}, readyState=${state.readyState}, isActive=${state.isActive}, paused=${state.paused}`);
-      }
 
       if (targetTime === null) {
         // Clip not active - handle prewarm or pause
@@ -175,18 +167,6 @@ export class PreviewPlaybackScheduler {
       } else {
         actions.push(...this.reconcilePausedClip(clipId, state, targetTime, syncState, now));
       }
-    }
-
-    if (import.meta.env.DEV && actions.length > 0) {
-      console.info("[PreviewLifecycle] scheduler:actions", {
-        count: actions.length,
-        actions: actions.map((a) => ({
-          type: a.type,
-          clipId: a.clipId.slice(0, 8),
-          time: a.time?.toFixed(3),
-          reason: a.reason,
-        })),
-      });
     }
 
     return actions;
@@ -288,10 +268,6 @@ export class PreviewPlaybackScheduler {
     // Browsers won't decode frames until a seek operation occurs
     const needsInitialSeek = !state.hasBeenSeeked && state.readyState >= 1 && state.isActive;
 
-    if (import.meta.env.DEV) {
-      console.log(`[Scheduler] Paused clip ${clipId.slice(0, 8)}: drift=${drift.toFixed(4)}s, tolerance=${this.config.driftTolerancePaused}s, readyState=${state.readyState}, hasBeenSeeked=${state.hasBeenSeeked}, needsInitialSeek=${needsInitialSeek}`);
-    }
-
     if (drift > this.config.driftTolerancePaused || needsInitialSeek) {
       const isWaitingToPlay = syncState.state === "playing" && state.readyState < 3;
 
@@ -315,15 +291,9 @@ export class PreviewPlaybackScheduler {
             time: targetTime,
             reason: needsInitialSeek ? "clip-enter" : "transport-jump",
           });
-        } else if (import.meta.env.DEV) {
-          // DEBUG: Log why seek was skipped
-          console.log(`[Scheduler] Skipping seek for ${clipId.slice(0, 8)}: readyState=${state.readyState} (needs >= 1)`);
         }
       }
-    } else if (import.meta.env.DEV) {
-      console.log(`[Scheduler] Drift within tolerance, no seek needed for ${clipId.slice(0, 8)}`);
     }
-
     // Ensure paused if not playing
     if (syncState.state !== "playing" && !state.paused) {
       actions.push({ type: "pause", clipId });
