@@ -278,9 +278,9 @@ export const EditorLayout: React.FC<EditorLayoutProps> = ({ onRequestClose }) =>
           stickerFormat: "lottie",
           stickerAnimationPath: absoluteAnimationPath,
           stickerSourceId: item.id,
+          width: 400,
+          height: 400,
         };
-
-        addMediaAsset(mediaAsset);
 
         const latestTracks = useTimelineStore.getState().tracks;
         const latestClips = useTimelineStore.getState().clips;
@@ -384,6 +384,15 @@ export const EditorLayout: React.FC<EditorLayoutProps> = ({ onRequestClose }) =>
       // Filter must be downloaded first
       const cachedFilter = filterCacheManager.getCached(item.id);
 
+      console.log("[EditorLayout] handleAddToTimeline - filters:", {
+        itemId: item.id,
+        itemName: item.name,
+        hasCachedFilter: !!cachedFilter,
+        cachedFilterKeys: cachedFilter ? Object.keys(cachedFilter.filter) : [],
+        hasGradingParams: cachedFilter?.filter?.gradingParams ? true : false,
+        gradingParams: cachedFilter?.filter?.gradingParams,
+      });
+
       if (!cachedFilter) {
         useProjectStore.getState().showToast("Filter not downloaded yet", "warning");
         return;
@@ -428,7 +437,6 @@ export const EditorLayout: React.FC<EditorLayoutProps> = ({ onRequestClose }) =>
         kind: "filter" as const,
         name: cachedFilter.filter.name || "Filter",
         intensity: defaultIntensity,
-        swatch: cachedFilter.filter.swatch || "",
         pipeline: cachedFilter.filter.pipeline,
         effectStack: cachedFilter.filter.effectStack,
       };
