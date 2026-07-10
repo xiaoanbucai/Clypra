@@ -216,17 +216,88 @@ function applyLiveParams(entry: FilterCacheEntry, mediaLayer: EvaluatedMediaLaye
 
       if (asset?.gradingParams) {
         const gp = asset.gradingParams;
-        params.exposure = (gp.exposure ?? 0.0) * mediaLayer.filter.intensity;
-        params.brightness = (gp.brightness ?? 0.0) * mediaLayer.filter.intensity;
-        params.contrast = (gp.contrast ?? 0.0) * mediaLayer.filter.intensity;
-        params.saturation = (gp.saturation ?? 0.0) * mediaLayer.filter.intensity;
-        params.temperature = (gp.temperature ?? 0.0) * mediaLayer.filter.intensity;
-        params.tint = (gp.tint ?? 0.0) * mediaLayer.filter.intensity;
-        params.sepia = (gp.sepia ?? 0.0) * mediaLayer.filter.intensity;
-        params.grayscale = (gp.grayscale ?? 0.0) * mediaLayer.filter.intensity;
-        params.hueRotate = (gp.hueRotate ?? 0.0) * mediaLayer.filter.intensity;
-        params.invert = (gp.invert ?? 0.0) * mediaLayer.filter.intensity;
-        params.vignette = (gp.vignette ?? 0.0) * mediaLayer.filter.intensity;
+        const intensity = mediaLayer.filter.intensity;
+
+        // Standard color adjustments
+        params.exposure = (gp.exposure ?? 0.0) * intensity;
+        params.brightness = (gp.brightness ?? 0.0) * intensity;
+        params.contrast = (gp.contrast ?? 0.0) * intensity;
+        params.saturation = (gp.saturation ?? 0.0) * intensity;
+        params.temperature = (gp.temperature ?? 0.0) * intensity;
+        params.tint = (gp.tint ?? 0.0) * intensity;
+        params.sepia = (gp.sepia ?? 0.0) * intensity;
+        params.grayscale = (gp.grayscale ?? 0.0) * intensity;
+        params.hueRotate = (gp.hueRotate ?? 0.0) * intensity;
+        params.invert = (gp.invert ?? 0.0) * intensity;
+        params.vignette = (gp.vignette ?? 0.0) * intensity;
+        params.lift = (gp.lift ?? 0.0) * intensity;
+
+        // Channel mix (for B&W with custom channel weights)
+        if (gp.channelMix) {
+          params.channelMixR = gp.channelMix.r ?? 0.0;
+          params.channelMixG = gp.channelMix.g ?? 0.0;
+          params.channelMixB = gp.channelMix.b ?? 0.0;
+          params.useChannelMix = 1.0; // Enable channel mix
+        } else {
+          params.useChannelMix = 0.0;
+        }
+
+        // Film grain
+        if (gp.grain) {
+          params.grainIntensity = (gp.grain.intensity ?? 0.0) * intensity;
+          params.grainSize = gp.grain.size ?? 1.0;
+        } else if (gp.grainIntensity !== undefined) {
+          // Fallback for flat grainIntensity/grainSize
+          params.grainIntensity = (gp.grainIntensity ?? 0.0) * intensity;
+          params.grainSize = gp.grainSize ?? 1.0;
+        }
+
+        // Split-toning
+        if (gp.shadowTint) {
+          params.shadowTintR = gp.shadowTint.r ?? 1.0;
+          params.shadowTintG = gp.shadowTint.g ?? 1.0;
+          params.shadowTintB = gp.shadowTint.b ?? 1.0;
+          params.shadowTintStrength = (gp.shadowTintStrength ?? 0.0) * intensity;
+        }
+        if (gp.highlightTint) {
+          params.highlightTintR = gp.highlightTint.r ?? 1.0;
+          params.highlightTintG = gp.highlightTint.g ?? 1.0;
+          params.highlightTintB = gp.highlightTint.b ?? 1.0;
+          params.highlightTintStrength = (gp.highlightTintStrength ?? 0.0) * intensity;
+        }
+        if (gp.splitBalance !== undefined) {
+          params.splitBalance = gp.splitBalance;
+        }
+
+        // Duotone
+        if (gp.duotoneDark) {
+          params.duotoneDarkR = gp.duotoneDark.r ?? 0.0;
+          params.duotoneDarkG = gp.duotoneDark.g ?? 0.0;
+          params.duotoneDarkB = gp.duotoneDark.b ?? 0.0;
+        }
+        if (gp.duotoneLight) {
+          params.duotoneLightR = gp.duotoneLight.r ?? 1.0;
+          params.duotoneLightG = gp.duotoneLight.g ?? 1.0;
+          params.duotoneLightB = gp.duotoneLight.b ?? 1.0;
+        }
+        if (gp.useDuotone !== undefined) {
+          params.useDuotone = gp.useDuotone;
+        }
+
+        // Vibrance
+        if (gp.vibranceAmount !== undefined) {
+          params.vibranceAmount = gp.vibranceAmount * intensity;
+        }
+        if (gp.vibranceProtectedHue) {
+          params.vibranceProtectedHueR = gp.vibranceProtectedHue.r ?? 0.91;
+          params.vibranceProtectedHueG = gp.vibranceProtectedHue.g ?? 0.69;
+          params.vibranceProtectedHueB = gp.vibranceProtectedHue.b ?? 0.55;
+        }
+
+        // Cross-process
+        if (gp.crossProcessAmount !== undefined) {
+          params.crossProcessAmount = gp.crossProcessAmount * intensity;
+        }
 
         console.log("[FilterCache] computed params to apply:", params);
       } else {
