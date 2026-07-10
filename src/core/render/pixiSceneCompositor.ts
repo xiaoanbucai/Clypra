@@ -253,7 +253,9 @@ export class PixiSceneCompositor {
         }
       } else if (layer.layerType === "text") {
         const textLayer = layer as EvaluatedTextLayer;
-        await renderTextLayerBridged(textLayer, frameId, baseMediaContainer, viewport, renderOrder);
+        const sprite = await renderTextLayerBridged(textLayer, frameId, baseMediaContainer, viewport, renderOrder);
+        const trackIdx = textLayer.trackIndex ?? 0;
+        sprite.zIndex = calculateLayerZIndex(trackIdx, maxTrackIndex, renderOrder);
       }
     }
 

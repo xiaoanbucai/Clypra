@@ -76,6 +76,13 @@ export async function renderTextLayerBridged(
     rasterizeTextCallback,
     cacheKey
   );
+  // Override engine position/scale to conform to project space layout contract
+  const centerX = layer.x + layer.width / 2;
+  const centerY = layer.y + layer.height / 2;
+  sprite.position.set(centerX, centerY);
+  sprite.width = layer.width + bleed.x * 2;
+  sprite.height = layer.height + bleed.y * 2;
+
   sprite.zIndex = renderOrder;
   return sprite;
 }
