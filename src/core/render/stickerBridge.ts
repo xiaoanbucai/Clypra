@@ -7,7 +7,7 @@ import {
   unmountStickerLayerBridge as engineUnmountStickerLayerBridge,
   endStickerFrame as engineEndStickerFrame,
   clearAllStickerBridges as engineClearAllStickerBridges
-} from "@clypra/engine";
+} from "@clypra-studio/engine";
 
 export function beginStickerFrame(container: import("pixi.js").Container): void {
   engineBeginStickerFrame(container);

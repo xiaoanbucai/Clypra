@@ -1,4 +1,4 @@
-import { getSharedPixiRenderer, getOrCreateMediaSprite, applyMediaTransform, clearAllMediaSprites, ALL_TRANSITIONS } from "@clypra/engine";
+import { getSharedPixiRenderer, getOrCreateMediaSprite, applyMediaTransform, clearAllMediaSprites, ALL_TRANSITIONS } from "@clypra-studio/engine";
 import { renderTextLayerBridged, beginTextFrame, endTextFrame } from "./textBridge.js";
 import { renderStickerLayerBridged, beginStickerFrame, endStickerFrame } from "./stickerBridge.js";
 import type { EvaluatedScene, EvaluatedMediaLayer, EvaluatedTextLayer, EvaluatedTransition } from "../evaluation/types.js";

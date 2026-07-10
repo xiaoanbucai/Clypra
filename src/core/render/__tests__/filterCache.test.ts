@@ -42,7 +42,7 @@ vi.mock("pixi-filters", () => {
   };
 });
 
-vi.mock("@clypra/engine", () => {
+vi.mock("@clypra-studio/engine", () => {
   return {
     applyBodyEffectMask: vi.fn((key: string, data: any) => ({ source: data })),
     createGPUBodyOutlineFilter: vi.fn((maskTexture: any, colorHex: string, thickness: number) => ({

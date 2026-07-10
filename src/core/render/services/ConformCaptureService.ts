@@ -5,7 +5,7 @@
  * This ensures proper aspect ratio handling for newly added video clips.
  */
 
-import type { ClipConform } from "@clypra/engine";
+import type { ClipConform } from "@clypra-studio/engine";
 
 export class ConformCaptureService {
   /**

@@ -108,7 +108,7 @@ export interface RustClip {
   sourceAspectRatio?: number;
   style_definition?: any;
   fitMode?: "contain" | "cover" | "fill" | "stretch" | "original";
-  conform?: import("@clypra/engine").ClipConform;
+  conform?: import("@clypra-studio/engine").ClipConform;
   volume?: number;
   kind?: string;
 }

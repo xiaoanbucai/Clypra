@@ -1,6 +1,6 @@
 import { Filter, Texture } from "pixi.js";
 import { AdjustmentFilter } from "pixi-filters";
-import { createGPUBodyOutlineFilter, createGPUBodyGlowFilter, createGPUBodyParticlesFilter } from "@clypra/engine";
+import { createGPUBodyOutlineFilter, createGPUBodyGlowFilter, createGPUBodyParticlesFilter } from "@clypra-studio/engine";
 
 
 // Standard vertex shader for PixiJS v8 filters

@@ -5,7 +5,7 @@
  */
 
 import type { TextClip } from "../../types";
-import { TemplateRenderer, type TextEffectDefinition, type TextTemplate } from "@clypra/engine";
+import { TemplateRenderer, type TextEffectDefinition, type TextTemplate } from "@clypra-studio/engine";
 import { generateId } from "../utils/id";
 import { useEffectsStore } from "../../features/text-effects/store/effectsStore";
 import { useTemplateStore } from "../../features/text-templates/templateStore";

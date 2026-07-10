@@ -1,4 +1,4 @@
-import { getSharedPixiRenderer as getShared, releaseSharedPixiRenderer as releaseShared } from "@clypra/engine";
+import { getSharedPixiRenderer as getShared, releaseSharedPixiRenderer as releaseShared } from "@clypra-studio/engine";
 
 export function getSharedPixiRenderer(canvas: HTMLCanvasElement | OffscreenCanvas, width: number, height: number) {
   return getShared(canvas, width, height);

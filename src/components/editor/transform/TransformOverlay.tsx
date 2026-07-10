@@ -25,7 +25,7 @@ import type { Clip, TextClip, TransformHandle, TransformState } from "@/types";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { useProjectStore } from "@/store/projectStore";
 import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
-import { resolveConform } from "@clypra/engine";
+import { resolveConform } from "@clypra-studio/engine";
 
 const SELECT_TRACE = import.meta.env.DEV;
 const traceSelect = (...args: unknown[]) => {

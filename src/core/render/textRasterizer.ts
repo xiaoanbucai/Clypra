@@ -1,5 +1,5 @@
 import type { EvaluatedTextLayer } from "../evaluation/types";
-import { evaluateScene as engineEvaluateScene, textEffectConfigToScene, type TextEffectConfig, layerToTextEffectConfig, CanvasDevice, defaultConfig as engineDefaultConfig, _buildConfig } from "@clypra/engine";
+import { evaluateScene as engineEvaluateScene, textEffectConfigToScene, type TextEffectConfig, layerToTextEffectConfig, CanvasDevice, defaultConfig as engineDefaultConfig, _buildConfig } from "@clypra-studio/engine";
 import { useEffectsStore } from "../../features/text-effects/store/effectsStore";
 import { invalidateEvaluationCache } from "../evaluation/evaluator";
 import { useTimelineStore } from "../../store/timelineStore";
@@ -99,7 +99,7 @@ export async function rasterizeTextLayer(ctx: CanvasRenderingContext2D | Offscre
         secondaryColor: "#ffffff",
       };
 
-      const { TemplateRenderer } = await import("@clypra/engine");
+      const { TemplateRenderer } = await import("@clypra-studio/engine");
       const renderer = new TemplateRenderer(template);
 
       // Apply customization overrides to the renderer

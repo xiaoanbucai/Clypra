@@ -6,7 +6,7 @@
  */
 
 import type { Container } from "pixi.js";
-import { getActiveMediaSpriteKeys, getMediaSpriteRecord, releaseMediaSprite } from "@clypra/engine";
+import { getActiveMediaSpriteKeys, getMediaSpriteRecord, releaseMediaSprite } from "@clypra-studio/engine";
 import { releaseFilterCache } from "../filterCache";
 
 export interface SpriteLifecycleStats {

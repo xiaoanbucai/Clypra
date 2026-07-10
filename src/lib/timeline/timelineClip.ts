@@ -2,7 +2,7 @@ import { DEFAULT_STILL_DURATION_SECONDS } from "../../constants/config";
 import type { Clip, MediaAsset } from "../../types";
 import { generateId } from "../utils/id";
 import { DEFAULT_PLACEMENT_POLICY } from "./placementPolicy";
-import type { ClipConform } from "@clypra/engine";
+import type { ClipConform } from "@clypra-studio/engine";
 
 export const resolveClipDuration = (asset: MediaAsset): number => {
   if (asset.type === "image") return DEFAULT_STILL_DURATION_SECONDS;

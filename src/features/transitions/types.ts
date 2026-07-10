@@ -8,7 +8,7 @@
  */
 
 // Legacy compatibility re-exports for timeline/playback code that uses the engine's runtime types
-export type { TransitionPreset, TransitionParameters, EasingFunction, AppliedTransition } from "@clypra/engine/transitions";
+export type { TransitionPreset, TransitionParameters, EasingFunction, AppliedTransition } from "@clypra-studio/engine/transitions";
 
 // Legacy type for backwards compatibility with timeline
 export type TransitionType = "fade" | "dissolve" | "slide" | "wipe" | "zoom" | "creative";

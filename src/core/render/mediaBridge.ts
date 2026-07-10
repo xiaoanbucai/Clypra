@@ -20,7 +20,7 @@ import {
   createGPUBodyParticlesFilter,
   type MediaSpriteRecord,
   type RenderViewport,
-} from "@clypra/engine";
+} from "@clypra-studio/engine";
 
 export type { MediaSpriteRecord, RenderViewport };
 

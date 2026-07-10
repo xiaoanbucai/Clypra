@@ -132,7 +132,7 @@ export interface EvaluatedMediaLayer extends BaseVisualLayer {
   readonly layout?: any;
 
   /** Professional conform settings */
-  readonly conform?: import("@clypra/engine").ClipConform;
+  readonly conform?: import("@clypra-studio/engine").ClipConform;
 
   /** Dimensions of the original source media file */
   readonly sourceWidth?: number;
@@ -215,7 +215,7 @@ export interface EvaluatedTextLayer extends BaseVisualLayer {
 
   /** Style preset ID for text effects */
   readonly styleId?: string;
-  readonly styleDefinition?: import("@clypra/engine").TextEffectDefinition;
+  readonly styleDefinition?: import("@clypra-studio/engine").TextEffectDefinition;
 
   /** Template-specific settings */
   readonly templateId?: string;
@@ -267,8 +267,8 @@ export interface EvaluatedTransition {
   /** Transition ID */
   readonly transitionId: string;
 
-  /** Transition type - uses TransitionRenderer from @clypra/engine for single source of truth */
-  readonly type: import("@clypra/engine").TransitionRendererType;
+  /** Transition type - uses TransitionRenderer from @clypra-studio/engine for single source of truth */
+  readonly type: import("@clypra-studio/engine").TransitionRendererType;
 
   /** Progress (0.0 - 1.0) */
   readonly progress: number;
@@ -285,8 +285,8 @@ export interface EvaluatedTransition {
   /** Blend mode */
   readonly blendMode: BlendMode;
 
-  /** Optional transition parameters from @clypra/engine */
-  readonly params?: import("@clypra/engine").TransitionParameters;
+  /** Optional transition parameters from @clypra-studio/engine */
+  readonly params?: import("@clypra-studio/engine").TransitionParameters;
 }
 
 /**

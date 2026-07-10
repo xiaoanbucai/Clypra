@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from "react";
 import { TemplatePreviewPlayer } from "@/features/text-templates";
-import { renderTextEffectCore, type TextEffectConfig, _buildConfig } from "@clypra/engine";
+import { renderTextEffectCore, type TextEffectConfig, _buildConfig } from "@clypra-studio/engine";
 import { getFontLoader } from "@/core/fonts/FontLoader";
 
 // Effects are designed for this banner canvas size (800×200).

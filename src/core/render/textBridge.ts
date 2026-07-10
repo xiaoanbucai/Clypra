@@ -10,7 +10,7 @@ import {
   unmountTextLayerBridge as engineUnmountTextLayerBridge,
   endTextFrame as engineEndTextFrame,
   clearAllTextBridges as engineClearAllTextBridges
-} from "@clypra/engine";
+} from "@clypra-studio/engine";
 
 export function beginTextFrame(container: import("pixi.js").Container): void {
   engineBeginTextFrame(container);

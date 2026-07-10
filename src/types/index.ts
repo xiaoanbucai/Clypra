@@ -178,7 +178,7 @@ export interface Clip {
   /** Placement fit mode used for deterministic reset/re-fit behavior. */
   fitMode?: "contain" | "cover" | "fill" | "stretch" | "original";
   /** Professional conform settings */
-  conform?: import("@clypra/engine").ClipConform;
+  conform?: import("@clypra-studio/engine").ClipConform;
   /** Audio volume (0.0 to 1.0, default 1.0) */
   volume?: number;
   kind?: ClipKind; // Optional for backward compatibility
@@ -359,7 +359,7 @@ export interface TextClip extends Clip {
     padding: number;
     borderRadius: number;
   };
-  styleDefinition?: import("@clypra/engine").TextEffectDefinition;
+  styleDefinition?: import("@clypra-studio/engine").TextEffectDefinition;
   /** Entrance animation */
   entranceAnimation?: TextAnimation;
   /** Exit animation */
@@ -434,7 +434,7 @@ export type TransitionType = "fade" | "dissolve" | "canvas";
 export type TransitionAlignment = "center" | "start" | "end";
 
 // Extended easing functions matching TransitionRenderer
-export type TransitionEasing = import("@clypra/engine").EasingFunction;
+export type TransitionEasing = import("@clypra-studio/engine").EasingFunction;
 
 export interface TransitionTimelineItem extends BaseTimelineItem {
   kind: "transition";

@@ -9,7 +9,7 @@
  * - Proxies
  *
  * NOTE: The function is named evaluateTimelineScene (not evaluateScene) to
- * avoid collision with @clypra/engine's evaluateScene, which takes a
+ * avoid collision with @clypra-studio/engine's evaluateScene, which takes a
  * SceneDocument and draws directly to a Canvas 2D context. These two
  * functions operate at different layers:
  *
@@ -22,7 +22,7 @@ import type { EvaluatedScene, EvaluatedVisualLayer, EvaluatedMediaLayer, Evaluat
 import { toCompositorClips } from "../timeline/adapter";
 import { getClipEndTime } from "@/lib/timeline/timelineClip";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { resolveConform } from "@clypra/engine";
+import { resolveConform } from "@clypra-studio/engine";
 
 const isExternalOrDataUrl = (value: string) => value.startsWith("data:") || value.startsWith("http") || value.startsWith("asset://");
 import { getEvaluationCache, computeClipVersion, computeAssetsVersion } from "./cache";
