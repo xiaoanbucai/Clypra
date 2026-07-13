@@ -19,7 +19,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AlertCircle, Film, Clock, Monitor, HardDrive, FolderOpen, RotateCcw, X, Pencil, Check, XCircle, Download } from "lucide-react";
+import { AlertCircle, Film, Clock, Monitor, HardDrive, FolderOpen, RotateCcw, X, Pencil, Check, XCircle, Download, CheckCircle2, Cloud } from "lucide-react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
 import { platform } from "@/core/platform";
@@ -45,17 +45,20 @@ interface ExportDialogProps {
 type ExportPhase = "configure" | "exporting" | "complete" | "error";
 
 interface VideoExportProgress {
-  currentFrame: number;
-  totalFrames: number;
+  currentFrame?: number;
+  totalFrames?: number;
   progress: number;
-  etaSeconds: number;
-  fps: number;
+  etaSeconds?: number;
+  fps?: number;
+  status?: string;
 }
 
 interface ExportResult {
   totalFrames: number;
   totalTimeMs: number;
   avgTimePerFrameMs: number;
+  outputPath?: string;
+  cancelled?: boolean;
 }
 
 function getQualityTierForPreset(presetKey: ExportPreset) {
@@ -103,6 +106,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
   const [result, setResult] = useState<ExportResult | null>(null);
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null);
   const [ffmpegVersion, setFfmpegVersion] = useState<string>("");
+  const [mobileExportMode, setMobileExportMode] = useState<"webcodecs" | "cloud" | "clypra">("webcodecs");
 
   // Project Rename State
   const [isEditingName, setIsEditingName] = useState(false);
@@ -274,6 +278,80 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
       console.error("[ExportDialog] Failed to export project file:", err);
     }
   }, [project, tracks, clips, transitions, mediaAssets, onClose]);
+
+  // ─── Mobile Cloud Export Handler ────────────────────────────────────
+  const handleCloudExport = useCallback(async () => {
+    if (!project) return;
+    setPhase("exporting");
+    setError(null);
+    setResult(null);
+    setProgress(null);
+
+    try {
+      const { renderViaCloud } = await import("@/lib/export/cloudExport");
+      const videoBlob = await renderViaCloud(
+        project,
+        {
+          clips,
+          tracks,
+          transitions,
+          mediaAssets,
+          duration: sequenceDuration,
+        },
+        (progressInfo) => {
+          setProgress({
+            progress: progressInfo.progress,
+            status: progressInfo.status,
+          });
+        }
+      );
+
+      // Save and share on mobile
+      const filename = `${project.name || "video-cloud"}-${Date.now()}.mp4`;
+      const sharedPath = await platform.saveAndShareVideo(videoBlob, filename);
+
+      setPhase("complete");
+      setResult({
+        outputPath: sharedPath,
+        totalFrames: Math.round(sequenceDuration * 30),
+        totalTimeMs: 0,
+        avgTimePerFrameMs: 0,
+        cancelled: false,
+      });
+    } catch (err: any) {
+      console.error("[ExportDialog] Cloud render failed:", err);
+      setError(err?.message || "Cloud rendering failed.");
+      setPhase("error");
+    }
+  }, [project, clips, tracks, transitions, mediaAssets, sequenceDuration]);
+
+  // ─── Mobile capabilities check ─────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (platform.isCapacitor()) {
+      const checkMobileCapabilities = async () => {
+        try {
+          const { isWebCodecsSupported } = await import("@/lib/export/videoExport");
+          if (isWebCodecsSupported()) {
+            setMobileExportMode("webcodecs");
+          } else {
+            const { isCloudRenderAvailable } = await import("@/lib/export/cloudExport");
+            const cloudAvailable = await isCloudRenderAvailable();
+            if (cloudAvailable) {
+              setMobileExportMode("cloud");
+            } else {
+              setMobileExportMode("clypra");
+            }
+          }
+        } catch (err) {
+          console.error("[ExportDialog] Capability check failed:", err);
+          setMobileExportMode("clypra");
+        }
+      };
+      checkMobileCapabilities();
+    }
+  }, [isOpen]);
 
   // ─── Export handler ────────────────────────────────────────────────
   const handleExport = useCallback(async () => {
@@ -504,15 +582,39 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
                 {platform.isCapacitor() ? (
                   <section>
                     <h3 className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-2.5">Mobile Export</h3>
-                    <div className="rounded-lg border border-accent/20 bg-accent/2 p-4 flex gap-3 items-start">
-                      <Download className="w-5 h-5 text-accent shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="text-xs font-semibold text-text-primary mb-1">Project File Export</h4>
-                        <p className="text-[11px] text-text-muted leading-relaxed">
-                          Direct MP4/MOV video rendering is supported on Clypra Desktop. For mobile, you can download your project file (.clypra) and open it on Clypra Desktop to render it at full quality.
-                        </p>
+                    {mobileExportMode === "webcodecs" && (
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/2 p-4 flex gap-3 items-start">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-xs font-semibold text-text-primary mb-1">On-Device Rendering Available</h4>
+                          <p className="text-[11px] text-text-muted leading-relaxed">
+                            This device supports hardware-accelerated video encoding (WebCodecs). Your video will render locally on-device and can be shared or saved to your photo library.
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
+                    {mobileExportMode === "cloud" && (
+                      <div className="rounded-lg border border-accent/20 bg-accent/2 p-4 flex gap-3 items-start">
+                        <Cloud className="w-5 h-5 text-accent shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-xs font-semibold text-text-primary mb-1">Cloud Rendering Fallback</h4>
+                          <p className="text-[11px] text-text-muted leading-relaxed">
+                            On-device hardware encoding is unsupported or disabled. We will render your project securely on our Cloud Render Worker service and download the finished MP4 video.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {mobileExportMode === "clypra" && (
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/2 p-4 flex gap-3 items-start">
+                        <Download className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-xs font-semibold text-text-primary mb-1">Project File Export Fallback</h4>
+                          <p className="text-[11px] text-text-muted leading-relaxed">
+                            On-device encoding and Cloud Rendering are currently unavailable. You can export the project metadata file (.clypra) and open it on Clypra Desktop to render it at full quality.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </section>
                 ) : (
                   <section>
@@ -560,14 +662,24 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
                 {platform.isCapacitor() ? (
                   <Button
                     variant="default"
-                    onClick={handleExportProjectFile}
+                    onClick={
+                      mobileExportMode === "webcodecs"
+                        ? handleExport
+                        : mobileExportMode === "cloud"
+                        ? handleCloudExport
+                        : handleExportProjectFile
+                    }
                     disabled={sequenceDuration <= 0}
                     className="min-w-[150px]"
                     style={{
                       background: sequenceDuration > 0 ? "linear-gradient(135deg, var(--color-accent), var(--color-accent-soft))" : undefined,
                     }}
                   >
-                    Export Project File
+                    {mobileExportMode === "webcodecs"
+                      ? "Export Video"
+                      : mobileExportMode === "cloud"
+                      ? "Cloud Render Video"
+                      : "Export Project File"}
                   </Button>
                 ) : (
                   <Button
@@ -595,17 +707,32 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
                 <h3 className="text-[15px] font-semibold text-text-primary tracking-tight">Exporting Video…</h3>
 
                 {progress && (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 p-3 rounded-lg border border-white/6 bg-white/1 text-[11px]">
-                    <div className="text-left text-text-muted">Progress</div>
-                    <div className="text-right font-medium text-text-primary tabular-nums">
-                      {progress.currentFrame} / {progress.totalFrames} frames
-                    </div>
+                  <div className="space-y-2">
+                    {progress.status && (
+                      <p className="text-[12px] font-medium text-accent animate-pulse mb-2">{progress.status}</p>
+                    )}
+                    {(progress.currentFrame !== undefined && progress.totalFrames !== undefined) ? (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 p-3 rounded-lg border border-white/6 bg-white/1 text-[11px]">
+                        <div className="text-left text-text-muted">Frames</div>
+                        <div className="text-right font-medium text-text-primary tabular-nums">
+                          {progress.currentFrame} / {progress.totalFrames}
+                        </div>
 
-                    <div className="text-left text-text-muted">Speed</div>
-                    <div className="text-right font-medium text-text-primary tabular-nums">{progress.fps.toFixed(1)} fps</div>
+                        {progress.fps !== undefined && (
+                          <>
+                            <div className="text-left text-text-muted">Speed</div>
+                            <div className="text-right font-medium text-text-primary tabular-nums">{progress.fps.toFixed(1)} fps</div>
+                          </>
+                        )}
 
-                    <div className="text-left text-text-muted">Time Remaining</div>
-                    <div className="text-right font-medium text-text-primary tabular-nums">{formatTime(progress.etaSeconds)}</div>
+                        {progress.etaSeconds !== undefined && (
+                          <>
+                            <div className="text-left text-text-muted">Time Remaining</div>
+                            <div className="text-right font-medium text-text-primary tabular-nums">{formatTime(progress.etaSeconds)}</div>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 )}
 
@@ -633,33 +760,39 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose }) =
 
                 {result && (
                   <div className="p-3 rounded-lg border border-white/6 bg-white/1 text-[11px] space-y-1.5 text-left">
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Total Render Time</span>
-                      <span className="font-medium text-text-primary">{formatMs(result.totalTimeMs)}</span>
-                    </div>
+                    {result.totalTimeMs > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Total Render Time</span>
+                        <span className="font-medium text-text-primary">{formatMs(result.totalTimeMs)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-text-muted">Rendered Frames</span>
                       <span className="font-medium text-text-primary">{result.totalFrames} frames</span>
                     </div>
+                    {result.avgTimePerFrameMs > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Average Speed</span>
+                        <span className="font-medium text-text-primary">
+                          {(1000 / result.avgTimePerFrameMs).toFixed(1)} fps ({result.avgTimePerFrameMs.toFixed(1)}ms/f)
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
-                      <span className="text-text-muted">Average Speed</span>
-                      <span className="font-medium text-text-primary">
-                        {(1000 / result.avgTimePerFrameMs).toFixed(1)} fps ({result.avgTimePerFrameMs.toFixed(1)}ms/f)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Saved Path</span>
-                      <span className="font-medium text-accent truncate max-w-[220px]" title={outputPath}>
-                        {displayPath}
+                      <span className="text-text-muted">{platform.isCapacitor() ? "Shared File" : "Saved Path"}</span>
+                      <span className="font-medium text-accent truncate max-w-[220px]" title={platform.isCapacitor() ? result.outputPath?.split("/").pop() : outputPath}>
+                        {platform.isCapacitor() ? result.outputPath?.split("/").pop() : displayPath}
                       </span>
                     </div>
                   </div>
                 )}
 
                 <div className="flex items-center justify-center gap-2 pt-2">
-                  <Button variant="ghost" size="sm" onClick={handleRevealInFinder} className="text-[11px]">
-                    Reveal in Finder
-                  </Button>
+                  {!platform.isCapacitor() && (
+                    <Button variant="ghost" size="sm" onClick={handleRevealInFinder} className="text-[11px]">
+                      Reveal in Finder
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={handleExportAnother} className="text-[11px] gap-1.5">
                     <RotateCcw className="w-3.5 h-3.5" />
                     Export Another
