@@ -24,6 +24,11 @@ export class TauriPlatformAdapter implements PlatformInterface {
     return appDataDir();
   }
 
+  async appCacheDir(): Promise<string> {
+    const { appCacheDir } = await import("@tauri-apps/api/path");
+    return appCacheDir();
+  }
+
   async joinPaths(...paths: string[]): Promise<string> {
     const { join } = await import("@tauri-apps/api/path");
     return join(...paths);

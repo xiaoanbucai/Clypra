@@ -5,6 +5,7 @@ export interface VideoMetadata {
   width: number;
   height: number;
   fps?: number;
+  size?: number;
 }
 
 export interface SelectedFile {
@@ -22,6 +23,7 @@ export interface PlatformInterface {
 
   // File System & Paths
   appDataDir(): Promise<string>;
+  appCacheDir(): Promise<string>;
   joinPaths(...paths: string[]): Promise<string>;
 
   // Dialogs

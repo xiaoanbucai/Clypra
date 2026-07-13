@@ -21,6 +21,20 @@ export class CapacitorPlatformAdapter implements PlatformInterface {
     return "projects";
   }
 
+  async appCacheDir(): Promise<string> {
+    try {
+      const { Filesystem, Directory } = await import("@capacitor/filesystem");
+      const result = await Filesystem.getUri({
+        directory: Directory.Cache,
+        path: "",
+      });
+      return result.uri;
+    } catch (e) {
+      console.warn("Failed to get cache directory URI, falling back to empty string", e);
+      return "";
+    }
+  }
+
   async joinPaths(...paths: string[]): Promise<string> {
     return paths.filter(Boolean).join("/");
   }
